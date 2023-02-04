@@ -1,0 +1,1355 @@
+reference : https://2much2learn.com/restful-event-driven-microservice-using-quarkus-jpa-kafka/
+
+-------------------------------------------------------------------------------------------------------------------
+->description :
+    This is a lengthy article which is one stop guide for implementing 
+    a microservice to handle both Restful APIs and events using Quarkus.
+
+    We will be implementing Catalogue Management Service, 
+    which includes restful APIs to Create, Read, Update 
+    and Delete Catalogue Items by their SKU (Stock Keeping Unit) 
+    and also includes Events handled and triggered to Kafka Topics
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->dependencies
+    <!-- Hibernate ORM with Panache -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-orm-panache</artifactId>
+    </dependency>
+
+    <!-- Hibernate Validator -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-hibernate-validator</artifactId>
+    </dependency>
+
+    <!-- RESTEasy Classic -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy</artifactId>
+    </dependency>
+
+    <!-- RESTEasy Reactive Jackson -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jackson</artifactId>
+    </dependency>
+
+    <!-- JDBC Driver -MySQL -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-jdbc-mysql</artifactId>
+    </dependency>
+
+    <!-- SmallRye Health -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-health</artifactId>
+    </dependency>
+
+    <!-- SmallRye Reactive Messaging - Kafka Connector-->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-reactive-messaging-kafka</artifactId>
+    </dependency>
+
+    <!-- test containers for integration testing with database -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>mysql</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>kafka</artifactId>
+      <version>1.13.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- for StringUtils = see EnumValidator class for usage -->
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+      <version>3.10</version>
+    </dependency>
+
+    <!-- for @NonNull, getter,setter, toString & constructors  -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.12</version>
+      <scope>provided</scope>
+    </dependency>
+
+    comment out the default dependecy below as RESTEasy Classic is what we need :
+    quarkus-resteasy-reactive 
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->application.properties
+    #datasource config
+    quarkus.datasource.db-kind=mysql
+    quarkus.datasource.username=root
+    quarkus.datasource.password=password
+    quarkus.datasource.jdbc.url=jdbc:mysql://localhost:3306/catalogDB
+    quarkus.datasource.jdbc.driver=com.mysql.cj.jdbc.Driver
+
+    #hibernate orm config
+    quarkus.hibernate-orm.database.generation=drop-and-create
+    #quarkus.hibernate-orm.log.sql=true
+
+    #test config
+    quarkus.http.test-port=8083
+    "%test".quarkus.datasource.db-kind=mysql
+    "%test".quarkus.datasource.jdbc.driver=org.testcontainers.jdbc.ContainerDatabaseDriver
+    "%test".quarkus.datasource.url=jdbc:tc:mysql:latest:///catalogDB
+
+    #test - hibernate orm config
+    "%test".quarkus.hibernate-orm.dialect=org.hibernate.dialect.MySQL8Dialect
+    "%test".quarkus.database.generation=drop-and-create
+
+    #kafka messages ---> we will use existing topic that was created before
+
+    #outgoing --> price-update ---> employee
+    mp.messaging.outgoing.employee.connector=smallrye-kafka
+    mp.messaging.outgoing.employee.topic=employee
+    mp.messaging.outgoing.employee.value.serializer=io.quarkus.kafka.client.serialization.ObjectMapperSerializer
+    #incoming --> product-purchase ---> javainuse-topic
+    mp.messaging.incoming.javainuse-topic.connector=smallrye-kafka
+    mp.messaging.incoming.javainuse-topic.topic=javainuse-topic
+    mp.messaging.incoming.javainuse-topic.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - Category = creating enum class for CATEGORY
+    @AllArgsConstructor
+    public enum Category {
+        BOOKS("Books"),
+        MUSIC("Music"),
+        MOVIES("Movies"),
+        GAMES("Games"),
+        ELECTRONICS("Electronics"),
+        COMPUTERS("Computers"),
+        OFFICE("Office");
+
+        private String value;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - IEnumValidator = creating custom annotation interface for CATEGORY field on CatalogItem
+    @Documented
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target({ElementType.FIELD})
+    //added after creating EnumValidator class
+    @Constraint(validatedBy = EnumValidator.class)
+    public @interface IEnumValidator {
+        Class<? extends Enum<?>> enumClazz();
+        String message() default "value is not valid";
+        Class<?>[] groups() default {};
+        Class<? extends Payload>[] payload() default {};
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - EnumValidator = creating enum validator which will be imported on the custome interface IEnumValidator above
+    public class EnumValidator implements ConstraintValidator<IEnumValidator, String> {
+        List<String> valueList= null;
+        @Override
+        public void initialize(IEnumValidator constraintAnnotation) {
+            valueList = new ArrayList<>();
+            Class<? extends Enum<?>> enumClass = constraintAnnotation.enumClazz();
+            Enum[] enumValArr = enumClass.getEnumConstants();
+            for (Enum enumVal : enumValArr){
+                valueList.add(enumVal.toString().toUpperCase());
+            }
+        }
+        @Override
+        public boolean isValid(String s, ConstraintValidatorContext constraintValidatorContext) {
+            return !StringUtils.isEmpty(s) && valueList.contains(s.toUpperCase());
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - CatalogItem = for databasetable and we imported the custom annotated interface for CATEGORY
+    @Entity
+    @Table(name = "CATALOG_ITEMS",
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = "SKU_NUMBER")
+        }
+    )
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @RequiredArgsConstructor(staticName = "of")
+    @ToString
+    @Getter
+    @Setter
+    public class CatalogItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        @Column(name = "ID",unique = true,nullable = false)
+        private Long id;
+
+        @NotEmpty(message = "SKU cannot be null or empty")
+        @NonNull
+        @Column(name = "SKU_NUMBER",unique = true,nullable = false, length = 16)
+        private String sku;
+
+        @NotEmpty(message = "Name cannot be null or empty")
+        @NonNull
+        @Column(name = "ITEM_NAME",unique = true,nullable = false, length = 255)
+        private String name;
+
+        @NotEmpty(message = "Description cannot be null or empty")
+        @NonNull
+        @Column(name = "DESCRIPTION",nullable = false, length = 255)
+        private String description;
+
+        @NonNull
+        @Column(name = "CATEGORY",nullable = false)
+        @IEnumValidator(
+                enumClazz = Category.class,
+                message = "invalid category provided"
+        )
+        private String category;
+
+        @NotNull(message = "Price cannot be null or empty")
+        @NonNull
+        @Column(name = "PRICE",nullable = false,precision = 10,scale = 2)
+        private Double price;
+
+        @NotNull(message = "Inventory cannot be null or empty")
+        @NonNull
+        @Column(name = "INVENTORY",nullable = false)
+        private Integer inventory;
+
+        @NonNull
+        @Temporal(TemporalType.TIMESTAMP)
+        @Column(name = "CREATED_ON",nullable = false, length = 19)
+        private Date createdOn;
+
+        @Temporal(TemporalType.TIMESTAMP)
+        @Column(name = "UPDATED_ON",nullable = true, length = 19)
+        private Date updatedOn;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->repository - CatalogRepository = used @ApplicationScoped & implemented PanacheRepository<Class_name>
+    @ApplicationScoped
+    public class CatalogRepository implements PanacheRepository<CatalogItem> {
+        public Optional<CatalogItem> findBySku(String sku){
+            return find("sku",sku).singleResultOptional();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->service - CatalogService = used @ApplicationScoped & @Inject to call CatalogRepository & ProductPriceUpdateEvent
+    @ApplicationScoped
+    public class CatalogService {
+        private Logger logger = LoggerFactory.getLogger(CatalogService.class);
+        @Inject
+        CatalogRepository catalogRepository;
+        @Inject
+        ProductPriceUpdateEvent productPriceUpdateEvent;
+
+        //getAllCatalog
+        public List<CatalogItem> getCatalogItems(){
+            Sort sort = Sort.ascending("name");
+            return catalogRepository.listAll(sort);
+        }
+        //getCatalogBySku
+        public CatalogItem getCatalogBySku(String skuNumber) throws ResourceNotFoundException {
+            CatalogItem catalogItem = catalogRepository.findBySku(skuNumber)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            String.format("catalog item not found for the sku : %s",skuNumber)
+                    ));
+            return catalogItem;
+
+        }
+        //getCatalog
+        public CatalogItem getCatalogItem(String skuNumber) throws ResourceNotFoundException {
+            return getCatalogBySku(skuNumber);
+        }
+        //addCatalog
+        @Transactional
+        public Long addCatalogItem(CatalogItem catalogItem){
+            catalogItem.setCreatedOn(new Date());
+            logger.info("=== "+catalogItem.toString());
+            catalogRepository.persist(catalogItem);
+            return catalogItem.getId();
+        }
+        //deleteCatalog
+        @Transactional
+        public void deleteCatalog(String skuNumber) throws ResourceNotFoundException {
+            CatalogItem catalogItem = getCatalogItem(skuNumber);
+            catalogRepository.delete(catalogItem);
+            catalogRepository.flush();
+        }
+        //updateCatalog
+        @Transactional
+        public void updateCatalogItem(CatalogItem catalogItem) throws ResourceNotFoundException {
+            CatalogItem catalogItemDB = getCatalogBySku(catalogItem.getSku());
+            boolean priceDifference = catalogItemDB.getPrice() != catalogItem.getPrice();
+            catalogItemDB.setName(catalogItem.getName());
+            catalogItemDB.setDescription(catalogItem.getDescription());
+            catalogItemDB.setPrice(catalogItem.getPrice());
+            catalogItemDB.setInventory(catalogItem.getInventory());
+            catalogItemDB.setUpdatedOn(new Date());
+            //publish if price changed
+            if (priceDifference){
+                //invoking ProductPriceUpdateEvent
+                productPriceUpdateEvent.add(new ProductPrice(catalogItem.getSku(),catalogItem.getPrice()));
+            }else {
+                //do nothing
+            }
+            catalogRepository.persist(catalogItemDB);
+        }
+
+        //this is invoked in ProductPurchaseReceiveEvent
+        @Transactional
+        public void productPurchased(String skuNumber){
+            try{
+                CatalogItem catalogItem = getCatalogItem(skuNumber);
+                if (catalogItem.getInventory() > 0){
+                    catalogItem.setInventory(catalogItem.getInventory()-1);
+                    updateCatalogItem(catalogItem);
+                }
+            }catch (ResourceNotFoundException e){
+                logger.error(String.format("catalog item not found for sku :",skuNumber));
+            }
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception - ResourceNotFoundException = will be called if productPurchased method from service is error
+    public class ResourceNotFoundException extends Exception{
+        private static final long serialVersionUID = 1L;
+        public ResourceNotFoundException(String message) {
+            super(message);
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->event - ProductPriceUpdateEvent = used @ApplicationScoped & @Outgoing("topic_name")
+    @ApplicationScoped
+    public class ProductPriceUpdateEvent {
+        private Logger logger = LoggerFactory.getLogger(ProductPriceUpdateEvent.class);
+        private BlockingQueue<ProductPrice> messages = new LinkedBlockingQueue<>();
+
+        public void add(ProductPrice message){
+            messages.add(message);
+        }
+
+        @Outgoing("price-update")
+        public CompletionStage<Message<ProductPrice>> send(){
+            return CompletableFuture.supplyAsync(() -> {
+                try{
+                    ProductPrice productPrice = messages.take();
+                    logger.info("publishing event for price update : "+productPrice);
+                    return Message.of(productPrice);
+                }catch (InterruptedException e){
+                    throw new RuntimeException(e);
+                }
+            });
+        }
+
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - ProductPrice = used for update on price and invoked in ProductPriceUpdateEvent above
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @RegisterForReflection
+    public class ProductPrice {
+        private String skuNumber;
+        private Double price;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->controller - CatalogControllerAPIPaths = for declaring all the API endpoints & invoked in CatalogController @Path()
+    public class CatalogControllerAPIPaths {
+        public static final String BASE_PATH = "/api/v1";
+        public static final String CREATE = "/";
+        public static final String GET_ITEMS = "/";
+        public static final String GET_ITEM = "/{sku}";
+        public static final String UPDATE = "/{sku}";
+        public static final String DELETE = "/{sku}";
+        public static final String UPLOAD_IMAGE = "/{sku}/image";
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->controller - CatalogController = invoke CatalogService via @Inject 
+    @Path(CatalogControllerAPIPaths.BASE_PATH)
+    @Produces(MediaType.APPLICATION_JSON)
+    public class CatalogController {
+        private Logger logger = LoggerFactory.getLogger(CatalogController.class);
+        @Inject
+        CatalogService catalogService;
+
+        //getCatalogItems
+        @GET
+        @Path(CatalogControllerAPIPaths.GET_ITEMS)
+        public Response getCatalogItems(){
+            logger.info("getting catalog items");
+            return Response.ok(new CatalogItemList(catalogService.getCatalogItems())).build();
+        }
+        //getCatalogItem
+        @GET
+        @Path(CatalogControllerAPIPaths.GET_ITEM)
+        public Response getCatalogItemBySku(@PathParam(value = "sku") String skuNumber) throws ResourceNotFoundException {
+            logger.info(String.format("getting catalog item with sku : %s",skuNumber));
+            return Response.ok(catalogService.getCatalogItem(skuNumber)).build();
+        }
+        //addCatalogItem
+        @POST
+        @Path(CatalogControllerAPIPaths.CREATE)
+        public Response addCatalogItem(@Valid CatalogItem catalogItem){
+            logger.info(String.format("adding catalog item with sku : %s",catalogItem.getSku()));
+            logger.info("=== "+catalogItem.toString());
+            Long id = catalogService.addCatalogItem(catalogItem);
+            return Response.status(Response.Status.CREATED)
+                    .entity(new ResourceIdentity(id))
+                    .build();
+        }
+        //updateCatalogItem
+        @PUT
+        @Path(CatalogControllerAPIPaths.UPDATE)
+        public Response updateCatalogItem(@PathParam(value = "sku") String skuNumber, @Valid CatalogItem catalogItem) throws ResourceNotFoundException {
+            logger.info(String.format("===> updating catalog with sku : %s",skuNumber));
+            catalogService.updateCatalogItem(catalogItem);
+            return Response.ok().build();
+        }
+        //deleteCatalogItem
+        @DELETE
+        @Path(CatalogControllerAPIPaths.DELETE)
+        public Response deleteCatalogItem(@PathParam(value = "sku") String skuNumber) throws ResourceNotFoundException {
+            logger.info(String.format("removing catalog with sku : %s",skuNumber));
+            catalogService.deleteCatalog(skuNumber);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - catalogitemlist = created for handling list of CatalogItem and is invoked in CatalogController getCatalogItems
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @RegisterForReflection
+    @ToString
+    public class CatalogItemList {
+        @NonNull
+        private List<CatalogItem> catalogItemList;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->model - ResourceIdentity = created for Response entity of CatalogItem and is invoked in CatalogController addCatalogItem
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @RegisterForReflection
+    public class ResourceIdentity {
+        @NotNull
+        private Long id;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->event - ProductPurchaseReceiveEvent = 
+    @ApplicationScoped
+    public class ProductPurchaseReceiveEvent {
+        private Logger logger = LoggerFactory.getLogger(ProductPurchaseReceiveEvent.class);
+        @Inject
+        CatalogService catalogService;
+        private ExecutorService executorService;
+        private BlockingQueue<String> messages;
+
+        void startup(@Observes StartupEvent startupEvent){
+            logger.info(String.format("===> ProductPurchaseReceiveEvent"));
+            messages = new LinkedBlockingQueue<>();
+            ScheduledExecutorService scheduledExecutorService = Executors.newScheduledThreadPool(5);
+            scheduledExecutorService.scheduleAtFixedRate(() -> {
+                if (messages.size()>0){
+                    logger.info("===> purchase product available");
+                    try{
+                        catalogService.productPurchased(messages.take());
+                    }catch (InterruptedException e){
+                        throw new RuntimeException(e);
+                    }
+                }
+            },1000,2000,TimeUnit.MILLISECONDS);
+        }
+        @Incoming("product-purchase")
+        public void productPurchase(String skuNumber){
+            logger.error("===> purchase product receive for sku : ",skuNumber);
+            messages.add(skuNumber);
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+->Handling Exceptions
+    Exception Handling is done with ExceptionMapper with JAX-RS. 
+    RESTEasy ExceptionMappers are custom, application provided, components that 
+    can catch thrown application exceptions and write specific HTTP responses. 
+    
+    The are classes annotated with @Provider and that implement this interface.
+
+    When an application exception is thrown it will be caught by the JAX-RS runtime. 
+
+    JAX-RS will then scan registered ExceptionMappers to see 
+    which one support marshalling the exception type thrown.
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->error - Error = class for error to have more meaningful display   
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public class Error {
+        @NonNull
+        private int code;
+        @NonNull
+        private String message;
+        @NonNull
+        private String description;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->error - ErrorCodes = declaring all error codes
+    public class ErrorCodes {
+        //error code for runtime exception
+        public static final int ERR_RUNTIME = 1000;
+        //error code for handler not found
+        public static final int ERR_HANDLER_NOT_FOUND = 1010;
+        //error code for resource not found
+        public static final int ERR_RESOURCE_NOT_FOUND = 1020;
+        //error code for validation failed exceptions
+        public static final int ERR_REQUEST_PARAMS_BODY_VALIDATION_FAILED = 1030;
+        //error code for constraint check exceptions
+        public static final int ERR_CONSTRAINT_CHECK_FAILED = 1040;
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->error - ErrorResponse = will be invoke on exception mapper classes to handle Error
+    @Data
+    public class ErrorResponse {
+        private List<Error> errors = new ArrayList<>();
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception/mapper - NotFoundExceptionMapper = invoke when there is an invalid path and also invoked Error & ErrorCodes classes
+    @Provider
+    public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundException> {
+        @Override
+        public Response toResponse(NotFoundException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_RESOURCE_NOT_FOUND,
+                            "Invalid Path",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.NOT_FOUND).entity(errorResponse).build();
+        }
+    }
+
+    Postman :
+    valid url -> GET http://localhost:8080/api/v1  SEND
+    invalid url -> GET http://localhost:8080/api/  SEND
+
+    before :
+        response body : blank
+
+    after :
+        response body :
+        {
+            "errors": [
+                {
+                    "code": 1020,
+                    "message": "Invalid Path",
+                    "description": "RESTEASY003210: Could not find resource for full path: http://localhost:8080/api"
+                }
+            ]
+        }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception/mapper - ResourceNotFoundExceptionMapper = invoker when resource is not found
+    @Provider
+    public class ResourceNotFoundExceptionMapper  implements ExceptionMapper<ResourceNotFoundException> {
+        private Logger logger = LoggerFactory.getLogger(ResourceNotFoundExceptionMapper.class);
+        @Override
+        public Response toResponse(ResourceNotFoundException e) {
+            logger.error(String.format("no resource found exception occurred : %s",e.getMessage()));
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_RESOURCE_NOT_FOUND,
+                            "Resource not found",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.NOT_FOUND).entity(errorResponse).build();
+        }
+    }
+
+    Postman :
+    GET http://localhost:8080/api/v1/CTLG-123-0001  SEND -> NOTE: skuNumber CTLG-123-0001 should not exist
+
+    before:
+    {
+        "details": "Error id 73542194-cbc4-4eb6-83fd-157b97629043-2, org.jboss.resteasy.spi.UnhandledException: org.acme.exception.ResourceNotFoundException: catalog item not found for the sku : CTLG-123-0001",
+        "stack": "org.jboss.resteasy.spi.UnhandledException: org.acme.exception.ResourceNotFoundException: catalog item not found for the sku : CTLG-123-0001\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleApplicationException(ExceptionHandler.java:105)\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleException(ExceptionHandler.java:359)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.writeException(SynchronousDispatcher.java:218)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:519)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)\r\n\tat io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)\r\n\tat io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)\r\n\tat org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)\r\n\tat org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)\r\n\tat io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)\r\n\tat java.base/java.lang.Thread.run(Thread.java:832)\r\nCaused by: org.acme.exception.ResourceNotFoundException: catalog item not found for the sku : CTLG-123-0001\r\n\tat org.acme.service.CatalogService.lambda$getCatalogBySku$0(CatalogService.java:38)\r\n\tat java.base/java.util.Optional.orElseThrow(Optional.java:401)\r\n\tat org.acme.service.CatalogService.getCatalogBySku(CatalogService.java:37)\r\n\tat org.acme.service.CatalogService.getCatalogItem(CatalogService.java:46)\r\n\tat org.acme.service.CatalogService_ClientProxy.getCatalogItem(Unknown Source)\r\n\tat org.acme.controller.CatalogController.getCatalogItemBySku(CatalogController.java:38)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:564)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:170)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:130)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)\r\n\t... 15 more"
+    }
+
+    after:
+    {
+        "errors": [
+            {
+                "code": 1020,
+                "message": "Resource not found",
+                "description": "catalog item not found for the sku : CTLG-123-0001"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception/mapper - ConstraintViolationExceptionMapper = invoke when data being posted violates validations like null, empty or IEnumValidator
+    @Provider
+    public class ConstraintViolationExceptionMapper implements ExceptionMapper<ConstraintViolationException> {
+        @Override
+        public Response toResponse(ConstraintViolationException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            for (ConstraintViolation violation : e.getConstraintViolations()){
+                errorResponse.getErrors().add(new Error(
+                        ErrorCodes.ERR_CONSTRAINT_CHECK_FAILED,
+                        violation.getPropertyPath().toString(),
+                        violation.getMessage()
+                ));
+            }
+            return Response.status(Response.Status.BAD_REQUEST).entity(errorResponse).build();
+        }
+    }
+
+    Postman:
+    POST http://localhost:8080/api/v1/ SEND
+    
+    valid request body : sku & name are not null or empty
+    {
+        "sku":"CTLG-123-0001",
+        "name":"The Avengers",
+        "description":"Marvel's The Avengers Movie",
+        "category":"Movies",
+        "price":10.00,
+        "inventory":0
+    }
+    invalid request body : sku & name are empty
+    {
+        "sku":"",
+        "name":"",
+        "description":"Marvel's The Avengers Movie",
+        "category":"Movies",
+        "price":10.00,
+        "inventory":0
+    }
+
+    before:
+    {
+        "exception": null,
+        "propertyViolations": [],
+        "classViolations": [],
+        "parameterViolations": [
+            {
+                "constraintType": "PARAMETER",
+                "path": "addCatalogItem.catalogItem.name",
+                "message": "Name cannot be null or empty",
+                "value": ""
+            }
+        ],
+        "returnValueViolations": []
+    }
+
+    after:
+    {
+        "errors": [
+            {
+                "code": 1040,
+                "message": "addCatalogItem.catalogItem.name",
+                "description": "Name cannot be null or empty"
+            },
+            {
+                "code": 1040,
+                "message": "addCatalogItem.catalogItem.sku",
+                "description": "SKU cannot be null or empty"
+            }
+        ]
+    }
+
+    Notice that the description from above response are the message from @NotEmpty() on CatalogItem class
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception/mapper - InvalidFormatExceptionMapper = invoke when data being posted is has invalid format 
+    @Provider
+    public class InvalidFormatExceptionMapper implements ExceptionMapper<InvalidFormatException> {
+        @Override
+        public Response toResponse(InvalidFormatException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_REQUEST_PARAMS_BODY_VALIDATION_FAILED,
+                            "invalid request format. please verify your request body and try again!!",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.BAD_REQUEST).entity(errorResponse).build();
+        }
+    }
+
+    Postman:
+
+    POST http://localhost:8080/api/v1/ SEND
+    invalid request body : price is double not string 
+    {
+        "sku":"CTLG-123-0001",
+        "name":"The Avengers",
+        "description":"Marvel's The Avengers Movie",
+        "category":"Movies",
+        "price":"INVALID",
+        "inventory":0
+    }
+
+    before:
+    com.fasterxml.jackson.databind.exc.InvalidFormatException: Cannot deserialize value of type `java.lang.Double` from
+    String &quot;INVALID&quot;: not a valid `Double` value
+    at [Source: (io.quarkus.vertx.http.runtime.VertxInputStream); line: 6, column: 13] (through reference chain:
+    org.acme.model.CatalogItem[&quot;price&quot;])
+
+    after:
+    {
+        "errors": [
+            {
+                "code": 1030,
+                "message": "invalid request format. please verify your request body and try again!!",
+                "description": "Cannot deserialize value of type `java.lang.Double` from String \"INVALID\": not a valid `Double` value\n at [Source: (io.quarkus.vertx.http.runtime.VertxInputStream); line: 6, column: 13] (through reference chain: org.acme.model.CatalogItem[\"price\"])"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->exception/mapper - RuntimeExceptionMapper = invoke when RuntimeException occur
+    @Provider
+    public class RuntimeExceptionMapper implements ExceptionMapper<RuntimeException> {
+        private Logger logger = LoggerFactory.getLogger(RuntimeExceptionMapper.class);
+
+        @Override
+        public Response toResponse(RuntimeException e) {
+            logger.error("runtime exception occurred while processing the request",e);
+
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_RUNTIME,
+                            "InternalServerError",
+                            "error occurred while processing your request. please try again"
+                    )
+            );
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(errorResponse).build();
+        }
+    }
+
+    to test, modify the getCatalogItems on CatalogController liek below :
+
+    @GET
+    @Path(CatalogControllerAPIPaths.GET_ITEMS)
+    public Response getCatalogItems(){
+        throw new RuntimeException();
+        //logger.info("getting catalog items");
+        //return Response.ok(new CatalogItemList(catalogService.getCatalogItems())).build();
+    }
+
+    the make an api call using Postman :
+    GET http://localhost:8080/api/v1/ SEND
+    before:
+    {
+        "details": "Error id 11d67342-f541-44ef-b04f-a9684de0fa94-1, org.jboss.resteasy.spi.UnhandledException: java.lang.RuntimeException",
+        "stack": "org.jboss.resteasy.spi.UnhandledException: java.lang.RuntimeException\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleApplicationException(ExceptionHandler.java:105)\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleException(ExceptionHandler.java:359)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.writeException(SynchronousDispatcher.java:218)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:519)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)\r\n\tat io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)\r\n\tat io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)\r\n\tat org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)\r\n\tat org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)\r\n\tat io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)\r\n\tat java.base/java.lang.Thread.run(Thread.java:832)\r\nCaused by: java.lang.RuntimeException\r\n\tat org.acme.controller.CatalogController.getCatalogItems(CatalogController.java:29)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:64)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:564)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:170)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:130)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)\r\n\t... 15 more"
+    }
+
+    after:
+    {
+        "errors": [
+            {
+                "code": 1000,
+                "message": "InternalServerError",
+                "description": "error occurred while processing your request. please try again"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+-Support for Integration Testing
+    quarkus-junit5 is required for testing, as it provides the 
+    @QuarkusTest annotation that controls the testing framework.
+
+    rest-assured is not required but is a convenient way to test HTTP endpoints, 
+    we also provide integration that automatically sets the correct URL so no configuration is required.
+
+    As we are using JDBC connecting to MySQL and publishing/subscribing to Kafka Topics, 
+    performing integration testing might be challange. 
+    To ease it up, Adding Testcontainers dependency will run throwaway instances of database, 
+    kafka cluster or anything else that can run in a Docker container.
+
+    Below are the dependencies needed for unit/integration testing:
+
+    <dependency>
+        <groupId>io.quarkus</groupId>
+        <artifactId>quarkus-junit5</artifactId>
+        <scope>test</scope>
+    </dependency>
+    <dependency>
+        <groupId>io.rest-assured</groupId>
+        <artifactId>rest-assured</artifactId>
+        <scope>test</scope>
+    </dependency>
+
+    <!-- test containers for integration testing with database -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>mysql</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+
+    As mentioned earlier, Including @QuarkusTest is considered to be 
+    more of an Integration Testing rather than Unit Testing. 
+
+    Objective of these test classes is to try performing actual service calls and verify the 
+    outcome of the action performed rather than mocking up the services to validate the outcome.
+
+    Below are the test classes that are implemented part of this project.
+        BaseTest
+        RestAssuredCatalogCRUDTest
+
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->BaseTest - create test class under src/test/java/org.acme/
+    Creating Reusable methods
+    When defining test methods, the context of complete test execution should be wrapped within its own method. 
+    To test Update Catalogue Item, we need to create, update and then 
+    get the catalogue item to verify if item is actually updated or not.
+
+    This can lead to lot of code duplication as most of the tests would have to include 
+    creating the catalogue item before testing its context of execution. 
+
+    For code reusability, we need to create functional methods which can be 
+    called from the test methods and should not impact other tests.
+    
+    public class BaseTest {
+
+        //We should consider creating new instance of CatalogueItem created with unique values, 
+        //else there will be unique constraint exceptions occurring in the application when 
+        //persisting the catalogue items to the database. 
+        //
+        //Below reusable methods are created to create Catalogue Item with fields assigned with distinct values.
+        
+        final Random random = new Random();
+
+        String prepareRandomSKUNumber(){
+            return "SKUNumber-"+
+                    random.ints(1000,9999)
+                            .findFirst()
+                            .getAsInt();
+        }
+        CatalogItem prepareCatalogItem(String skuNumber){
+            CatalogItem catalogItem = CatalogItem.of(
+                    skuNumber,
+                    "catalog item - "+skuNumber,
+                    "catalog description - "+skuNumber,
+                    Category.BOOKS.name(),
+                    10.00,
+                    10,
+                    new Date()
+            );
+            return catalogItem;
+        }
+
+        //As observed, we created prepareRandomSKUNumber method to generate unique SKU number which will 
+        //be passed to prepareCatalogueItem to create instance of Catalogue Item with random SKU number. 
+        //This will ensure unique constraint fields are kept unique when executing tests.
+
+        //And finally, we will be creating one more reusable method to create instance of 
+        //ResponseSpecification based on the expected response HTTP Status code. 
+        //This method will be used in all test classes to verify if the 
+        //response received is with the expected response HTTP Status code.
+
+        ResponseSpecification prepareResponseSpecification(int responseStatus){
+            return new ResponseSpecBuilder()
+                    .expectStatusCode(responseStatus)
+                    .build();
+        }
+
+        //Below is such reusable method which handles creating catalogue item request and returning the response.
+        Response postCatalogItem(CatalogItem catalogItem){
+            RequestSpecification requestSpecification = given()
+                    .contentType("application/json")
+                    .body(catalogItem);
+            return requestSpecification.post("/");
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->RestAssuredCatalogCRUDTest - create test class under test/java/org.acme/
+    Testing REST endpoints
+    Test class RestAssuredCatalogueCRUDTest is defined to handle all tests against the RESTful APIs. 
+    It imports classes from JUnit5, REST-assured and Hamcrest to setup, access and validate APIs.
+
+    Below are the tests that are included as part of the Test class:
+        Application Health Check
+        Create Catalogue Item
+        Get Catalogue Items
+        Get Catalogue Item by SKU
+        Update Catalogue Item by SKU
+        Delete Catalogue Item by SKU
+        Resource Not Found
+        Handling Validation Errors
+        Handling Invalid Request
+
+    With the common reusable code separated into BaseTest, 
+    implementing test methods will be easy by following the Given\When\Then syntax.
+
+    As all the tests are performed on the single API endpoints, 
+    they all share the same API Base URI. 
+    
+    REST-assured provides a convenient way to configure this base uri to be used by all the tests.
+
+    RestAssuredCatalogueCRUDTest.java
+
+    @QuarkusTest
+    public class RestAssuredCatalogCRUDTest extends BaseTest{
+        @BeforeEach
+        public void setURL(){
+            RestAssured.baseURI="http://localhost:8080/api/v1";
+        }
+        //healthCheck
+        @Test
+        @DisplayName("test if application is up by accessing health endpoint")
+        public void test_applicationIsUp(){
+            try {
+                given()
+                        .get("http://localhost:8080/q/health")
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(200))
+                .and()
+                    .assertThat().body("status",equalTo("UP"));
+            }catch (Exception e){
+                fail("Error occurred while testing application health check", e);
+            }
+        }
+        //addCatalogItem
+        @Test
+        @DisplayName("tes create catalog item")
+        public void test_createCatalogItem(){
+            try {
+                //save catalog item
+                postCatalogItem(prepareCatalogItem(prepareRandomSKUNumber()))
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(201))
+                .and()
+                    .assertThat().body("id",greaterThan(0));
+            }catch (Exception e){
+                fail("error occurred while testing catalog item create endpoint",e);
+            }
+        }
+        //getCatalogItems
+        @Test
+        @DisplayName("test get catalog items")
+        public void test_getCatalogItems(){
+            try {
+                //save catalog item
+                postCatalogItem(prepareCatalogItem(prepareRandomSKUNumber()));
+                postCatalogItem(prepareCatalogItem(prepareRandomSKUNumber()));
+                given()
+                        .get("/")
+                        .then()
+                        .assertThat().spec(prepareResponseSpecification(200))
+                        .and()
+                        .assertThat().body("data",is(not(empty())));
+            }catch (Exception e){
+                fail("error occurred while testing fetch catalog items");
+            }
+        }
+        //getCatalogItem
+        @Test
+        @DisplayName("test get catalog item")
+        public void test_getCatalogItem(){
+            try {
+                //create catalog item
+                CatalogItem catalogItem = prepareCatalogItem(prepareRandomSKUNumber());
+                //save catalog item
+                postCatalogItem(catalogItem);
+
+                given()
+                    .pathParam("sku",catalogItem.getSku())
+                .when()
+                    .get("/{sku}")
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(200))
+                .and()
+                    .assertThat().body("name",equalTo(catalogItem.getName()))
+                .and()
+                    .assertThat().body("category",equalTo(catalogItem.getCategory()));
+            }catch (Exception e){
+                fail("error occurred while testing fetch catalog item",e);
+            }
+        }
+        //deleteCatalogItem
+        @Test
+        @DisplayName("test delete catalog item")
+        public void test_deleteCatalogItem(){
+            try {
+                //create catalog item
+                CatalogItem catalogItem = prepareCatalogItem(prepareRandomSKUNumber());
+                //save catalog item
+                postCatalogItem(catalogItem);
+                given()
+                        .pathParam("sku",catalogItem.getSku())
+                        .when()
+                        .delete("/{sku}")
+                        .then()
+                        .assertThat().spec(prepareResponseSpecification(204));
+                given()
+                        .pathParam("sku",catalogItem.getSku())
+                        .when()
+                        .get("/{sku}")
+                        .then()
+                        .assertThat().spec(prepareResponseSpecification(404));
+
+            }catch (Exception e){
+                fail("error occurred while testing catalog item delete",e);
+            }
+        }
+        //updateCatalogItem
+        @Test
+        @DisplayName("test update catalog item")
+        public void test_updateCatalogItem(){
+            try {
+                //create catalog item
+                CatalogItem catalogItem = prepareCatalogItem(prepareRandomSKUNumber());
+                //save catalog item
+                postCatalogItem(catalogItem);
+                //update catalog item
+                catalogItem.setName("updated - "+catalogItem.getName());
+                catalogItem.setDescription("updated - "+catalogItem.getDescription());
+                given()
+                    .contentType("application/json")
+                    .body(catalogItem)
+                    .pathParam("sku",catalogItem.getSku())
+                .when()
+                    .put("/{sku}")
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(200));
+
+                //get updated catalog item with sku of catalog item created
+                given()
+                    .pathParam("sku",catalogItem.getSku())
+                .when()
+                    .get("/{sku}")
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(200))
+                .and()
+                    .assertThat().body("name",equalTo(catalogItem.getName()))
+                .and()
+                    .assertThat().body("category",equalTo(catalogItem.getCategory()));
+            }catch (Exception e){
+                fail("error occurred while testing catalog item update",e);
+            }
+        }
+        //resourceNotFound
+        @Test
+        @DisplayName("test resource not found")
+        public void test_resourceNotFound() {
+            try {
+                given()
+                    .pathParam("sku",prepareRandomSKUNumber())
+                    .get("/{sku}")
+                .then()
+                    .assertThat().spec(prepareResponseSpecification(404));
+            }catch (Exception e){
+                fail("error occurred while testing resource not found",e);
+            }
+        }
+        //validationErrors - constraint
+        @Test
+        @DisplayName("test validation error")
+        public void test_validationErrors(){
+            try{
+                CatalogItem catalogItem = prepareCatalogItem(prepareRandomSKUNumber());
+                catalogItem.setCategory("INVALID");
+                Response response = postCatalogItem(catalogItem)
+                        .then()
+                        .assertThat().spec(prepareResponseSpecification(400))
+                        .and()
+                        .extract().response();
+                List<Error> errors = Arrays.asList(response.getBody().jsonPath().getObject("errors",Error[].class));
+                assertTrue(errors != null && errors.size() > 0);
+                assertTrue(errors.get(0).getDescription().equalsIgnoreCase("invalid category provided"));
+            }catch (Exception e){
+                fail("error occurred while testing validation errors",e);
+            }
+        }
+        //invalidRequest - not found exception
+        @Test
+        @DisplayName("test invalid request")
+        public void test_invalidRequest(){
+            try{
+                //create catalog item via JsonObject
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode rootNode = mapper.createObjectNode();
+                ((ObjectNode) rootNode).put("name","INVALID");
+                ((ObjectNode) rootNode).put("sku",prepareRandomSKUNumber());
+                ((ObjectNode) rootNode).put("price","INVALID");
+                String catalogItem = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(rootNode);
+                Response response = given()
+                        .contentType("application/json")
+                            .body(catalogItem)
+                            .post("/")
+                        .then()
+                            .assertThat().spec(prepareResponseSpecification(400))
+                        .and()
+                            .extract().response();
+                List<Error> errors = Arrays.asList(response.getBody().jsonPath().getObject("errors",Error[].class));
+                assertTrue(errors != null && errors.size() > 0);
+                assertTrue(errors.get(0).getMessage().contains("invalid request"));
+            }catch (Exception e){
+                fail("error occurred while testing invalid request",e);
+            }
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->Run Integration Test - Edit Configuration -> add maven -> Run quarkus:dev -> press r -> encountered 
+    run console output :
+    2023-01-31 21:16:00,181 WARN  [io.qua.kaf.cli.dep.DevServicesKafkaProcessor] (build-55) Docker isn't working, please configure the Kafka bootstrap servers property (kafka.bootstrap.servers).
+    __  ____  __  _____   ___  __ ____  ______ 
+    --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+    -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+    --\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+    2023-01-31 21:16:02,449 INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.0.Final) started in 4.051s. Listening on: http://localhost:8080
+    2023-01-31 21:16:02,450 INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+    2023-01-31 21:16:02,450 INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [agroal, cdi, hibernate-orm, hibernate-orm-panache, hibernate-validator, jdbc-mysql, kafka-client, narayana-jta, resteasy, resteasy-jackson, smallrye-context-propagation, smallrye-health, smallrye-reactive-messaging, smallrye-reactive-messaging-kafka, vertx]
+    r
+    Starting tests
+    Press [r] to re-run, [h] for more options>
+    Press [r] to re-run, [o] Toggle test output, [h] for more options>
+    Running tests for the first time
+    Press [h] for more options>
+    Press [o] Toggle test output, [h] for more options>
+
+    Starting test run, 10 tests to run.
+    Running 1/10. Running: #JUnit Jupiter
+    Running 1/10. Running: org.acme.GreetingResourceTest#GreetingResourceTest
+    Running 1/10. Running: org.acme.GreetingResourceTest#testHelloEndpoint()
+    Running 2/10. Running: org.acme.RestAssuredCatalogCRUDTest#RestAssuredCatalogCRUDTest
+    Running 2/10. Running: org.acme.RestAssuredCatalogCRUDTest#test update catalog item
+    2023-01-31 21:16:23,465 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-9079
+    2023-01-31 21:16:23,476 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-9079, name=catalog item - SKUNumber-9079, description=catalog description - SKUNumber-9079, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:23 PST 2023, updatedOn=null)
+    2023-01-31 21:16:23,496 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-9079, name=catalog item - SKUNumber-9079, description=catalog description - SKUNumber-9079, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:23 PST 2023, updatedOn=null)
+    2023-01-31 21:16:23,659 INFO  [org.acm.con.CatalogController] (executor-thread-0) ===> updating catalog with sku : SKUNumber-9079
+    2023-01-31 21:16:23,774 INFO  [org.acm.con.CatalogController] (executor-thread-0) getting catalog item with sku : SKUNumber-9079
+    Running 3/10. Running: org.acme.RestAssuredCatalogCRUDTest#test invalid request
+    Running 4/10. Running: org.acme.RestAssuredCatalogCRUDTest#test get catalog items
+    2023-01-31 21:16:24,282 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-5672
+    2023-01-31 21:16:24,283 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-5672, name=catalog item - SKUNumber-5672, description=catalog description - SKUNumber-5672, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,283 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-5672, name=catalog item - SKUNumber-5672, description=catalog description - SKUNumber-5672, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,310 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-3599
+    2023-01-31 21:16:24,311 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-3599, name=catalog item - SKUNumber-3599, description=catalog description - SKUNumber-3599, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,311 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-3599, name=catalog item - SKUNumber-3599, description=catalog description - SKUNumber-3599, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,327 INFO  [org.acm.con.CatalogController] (executor-thread-0) getting catalog items
+    Running 5/10. Running: org.acme.RestAssuredCatalogCRUDTest#test validation error
+    --> ConstraintViolation
+    Running 6/10. Running: org.acme.RestAssuredCatalogCRUDTest#test delete catalog item
+    2023-01-31 21:16:24,395 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-2568
+    2023-01-31 21:16:24,395 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-2568, name=catalog item - SKUNumber-2568, description=catalog description - SKUNumber-2568, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,395 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-2568, name=catalog item - SKUNumber-2568, description=catalog description - SKUNumber-2568, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,411 INFO  [org.acm.con.CatalogController] (executor-thread-0) removing catalog with sku : SKUNumber-2568
+    2023-01-31 21:16:24,432 INFO  [org.acm.con.CatalogController] (executor-thread-0) getting catalog item with sku : SKUNumber-2568
+    2023-01-31 21:16:24,434 ERROR [org.acm.exc.map.ResourceNotFoundExceptionMapper] (executor-thread-0) no resource found exception occurred : catalog item not found for the sku : SKUNumber-2568
+    Running 7/10. Running: org.acme.RestAssuredCatalogCRUDTest#tes create catalog item
+    2023-01-31 21:16:24,450 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-4409
+    2023-01-31 21:16:24,450 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-4409, name=catalog item - SKUNumber-4409, description=catalog description - SKUNumber-4409, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,451 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-4409, name=catalog item - SKUNumber-4409, description=catalog description - SKUNumber-4409, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    Running 8/10. Running: org.acme.RestAssuredCatalogCRUDTest#test get catalog item
+    2023-01-31 21:16:24,484 INFO  [org.acm.con.CatalogController] (executor-thread-0) adding catalog item with sku : SKUNumber-3907
+    2023-01-31 21:16:24,485 INFO  [org.acm.con.CatalogController] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-3907, name=catalog item - SKUNumber-3907, description=catalog description - SKUNumber-3907, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,485 INFO  [org.acm.ser.CatalogService] (executor-thread-0) === CatalogItem(id=null, sku=SKUNumber-3907, name=catalog item - SKUNumber-3907, description=catalog description - SKUNumber-3907, category=BOOKS, price=10.0, inventory=10, createdOn=Tue Jan 31 21:16:24 PST 2023, updatedOn=null)
+    2023-01-31 21:16:24,500 INFO  [org.acm.con.CatalogController] (executor-thread-0) getting catalog item with sku : SKUNumber-3907
+    Running 9/10. Running: org.acme.RestAssuredCatalogCRUDTest#test if application is up by accessing health endpoint
+    Running 10/10. Running: org.acme.RestAssuredCatalogCRUDTest#test resource not found
+    2023-01-31 21:16:24,592 INFO  [org.acm.con.CatalogController] (executor-thread-0) getting catalog item with sku : SKUNumber-1450
+    2023-01-31 21:16:24,594 ERROR [org.acm.exc.map.ResourceNotFoundExceptionMapper] (executor-thread-0) no resource found exception occurred : catalog item not found for the sku : SKUNumber-1450
+    Press [r] to re-run, [h] for more options>
+    Press [r] to re-run, [o] Toggle test output, [h] for more options>
+    All 10 tests are passing (0 skipped), 10 tests were run in 6257ms. Tests completed at 21:16:24.
+
+    Process finished with exit code 130
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->Testing Kafka Events
+
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>kafka</artifactId>
+      <version>1.13.0</version>
+      <scope>test</scope>
+    </dependency>
+
+    With KafkaTestResource created to bootstrap Testcontainer Kafka cluster, 
+    we can perfom integration tests by publishing and consuming messages to 
+    topics and validate the functionality relying on them.
+
+    Tests are broken down to two different classes based on Incoming & Outgoing messages.
+
+    Incoming Message
+    As per the usecase defined for handling product-purchased event, we need to mimic a product is purchased from online shopping application and the inventory stock for that product should be deceremented in catalogue database.
+
+    Below is the sequence flow of the test
+-------------------------------------------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+->config/KafkaTestResource -> created under src/test/java/org.acme
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->PriceUpdateOutgoingEventTest  - create under src/tst/java/org.acme
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------------
+->serializer/ProductPriceDeserializer - created under src/test/java/org.acme = invoked in PriceUpdateOutgoingEventTest
+    public class ProductPriceDeserializer implements Deserializer {
+        @Override
+        public Object deserialize(String s, byte[] bytes) {
+            ObjectMapper objectMapper = new ObjectMapper();
+            ProductPrice productPrice = null;
+            try {
+                productPrice = objectMapper.readValue(s, ProductPrice.class);
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+            return productPrice;
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+
+
+
+-------------------------------------------------------------------------------------------------------------------
+
+
+-------------------------------------------------------------------------------------------------------------------
+Configuring multiple profiles
+Quarkus supports the notion of configuration profiles. These allow us to have multiple configuration in the same file and select between them via a profile name.
+
+By default Quarkus has three profiles, although it is possible to use as many as you like. The default profiles are:
+
+dev - Activated when in development mode (i.e. quarkus:dev)
+test - Activated when running tests
+prod - The default profile when not running in development or test mode
+Below is sample configuration for test profile:
+
+application.yaml
+### Test Configuration ####
+"%test":
+  quarkus:
+    # Datasource configuration
+    datasource:
+      db-kind: postgresql
+      jdbc:
+        driver: org.testcontainers.jdbc.ContainerDatabaseDriver
+        url: jdbc:tc:postgresql:latest:///cataloguedb
+Observe %test is enclosed with double quotes. This is how we can configure custom profiles and choose them loaded when running the application as below:
+
+Packaging
+$ mvn package -Dquarkus.profile=prod-aws`
+
+The command will run with the prod-aws profile. This can be overridden using the quarkus.profile system property.
+
+
+-------------------------------------------------------------------------------------------------------------------
+->Banner - 
+application.yaml
+quarkus:
+
+  # load Custom Banner - Generated at http://patorjk.com/software/taag/#p=display&f=Slant&t=Catalogue%20CRUD
+  banner:
+    path: banner.txt
+-------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+->Lombok
+    @Data is a convenient shortcut annotation that bundles the features of @ToString, @EqualsAndHashCode, @Getter / @Setter and @RequiredArgsConstructor all together.
+    @AllArgsConstructor generates a constructor with 1 parameter for each field in your class. Fields marked with @NonNull result in null checks on those parameters.
+    @RequiredArgsConstructor generates a constructor with 1 parameter for each field that requires special handling.
+-------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------
+-> Replace application.properties with application.yml
+YAML is a superset of JSON, and as such is a very convenient format for specifying hierarchical configuration data.
+
+Quarkus supports YAML configuration since SmallRye Config provides support for it when we add quarkus-config-yaml extension.
+
+Replace application.properties with application.yml under src/main/resources.
+
+Below is already part of pom.xml when selecting the below extension and generating code:
+
+pom.xml
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-config-yaml</artifactId>
+</dependency>
