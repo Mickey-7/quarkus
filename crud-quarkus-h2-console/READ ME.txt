@@ -1,0 +1,292 @@
+reference : https://medium.com/javarevisited/a-very-simple-crud-with-quarkus-7b066c9c44e8
+
+------------------------------------------------------------------------------------------
+generate quarkus project on:
+    code.quarkus.io
+then add the needed dependencies
+------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+on application.properties, configure h2 db
+    quarkus.datasource.db-kind=h2
+    quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb;INIT=RUNSCRIPT FROM 'classpath:mock.sql'
+    quarkus.datasource.username=sa
+    quarkus.datasource.password=
+
+    quarkus.hibernate-orm.dialect=org.hibernate.dialect.H2Dialect
+    quarkus.hibernate-orm.log.sql=true
+then add the dependenciesfor h2
+    <!-- added for h2 console -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-vertx</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-undertow</artifactId>
+    </dependency>
+    <!-- -->
+create mock.sql under src/main/resources to create initial data on h2
+    create table items(
+        item_id integer auto_increment,
+        item_name varchar,
+        item_count varchar,
+        item_status varchar
+    );
+then create web.xml under src/main/resources/META-INF to enable h2 console
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE web-app
+        PUBLIC "-//Sun Microsystems, Inc.//DTD Web Application 2.3//EN"
+        "http://java.sun.com/dtd/web-app_2_3.dtd">
+
+    <web-app>
+        <display-name>Crud project</display-name>
+        <servlet>
+            <servlet-name>h2-console</servlet-name>
+            <servlet-class>org.h2.server.web.WebServlet</servlet-class>
+        </servlet>
+
+        <servlet-mapping>
+            <servlet-name>h2-console</servlet-name>
+            <url-pattern>/h2/*</url-pattern>
+        </servlet-mapping>
+    </web-app>
+------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+create ItemEntity class under src/main/java/org.acme/model
+
+@Entity
+@Table(name = "items")
+public class ItemEntity extends PanacheEntityBase {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "item_id")
+    public Long id;
+    @Column(name = "item_name")
+    public String name;
+    @Column(name = "item_count")
+    public String count;
+    @Column(name = "item_status")
+    public String status;
+
+    public ItemEntity() {
+    }
+
+    public ItemEntity(Long id, String name, String count, String status) {
+        this.id = id;
+        this.name = name;
+        this.count = count;
+        this.status = status;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getCount() {
+        return count;
+    }
+
+    public void setCount(String count) {
+        this.count = count;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    @Override
+    public String toString() {
+        return "ItemEntity{" +
+                "id=" + id +
+                ", name='" + name + '\'' +
+                ", count='" + count + '\'' +
+                ", status='" + status + '\'' +
+                '}';
+    }
+}
+------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------
+create ItemService class under src/main/java/org.acme/service
+
+@ApplicationScoped
+public class ItemService {
+
+    public List<ItemEntity> get(){
+        List<ItemEntity> listAll = ItemEntity.findAll().list();
+        return listAll.stream().map(ie -> {
+                    return new ItemEntity(ie.id,ie.name,ie.count,ie.status);
+                }
+        ).collect(Collectors.toList());
+    }
+    
+    @Transactional
+    public void create(ItemEntity itemEntity){
+        ItemEntity ie = new ItemEntity();
+        ie.name = itemEntity.name;
+        ie.count = itemEntity.count;
+        ie.status = itemEntity.status;
+        ie.persist();
+    }
+    
+    @Transactional
+    public void update(ItemEntity itemEntity){
+        ItemEntity item = ItemEntity.findById(itemEntity.getId());
+        item.name = itemEntity.getName();
+        item.count = itemEntity.getCount();
+        item.status = itemEntity.getStatus();
+    }
+    
+    @Transactional
+    public void delete(Long id){
+        ItemEntity.deleteById(id);
+    }
+}
+------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+create ItemController class under src/main/java/org.acme/controller
+
+@Path("items")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+public class ItemController {
+    @Inject
+    ItemService itemService;
+
+    @GET
+    public List<ItemEntity> get(){
+        return itemService.get();
+    }
+    
+    @POST
+    public void create(ItemEntity item){
+        itemService.create(item);
+    }
+    
+    @PUT
+    public void update(ItemEntity item){
+        itemService.update(item);
+    }
+    
+    @DELETE
+    @Path("{id}")
+    public void delete(@PathParam("id") Integer id){
+        itemService.delete(Long.valueOf(id));
+    }
+}
+------------------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------------------
+Postman test
+
+URL : localhost:8080/items
+
+GET
+localhost:8080/items
+
+POST
+{
+    "name":"inserted-two-update",
+    "count":"17",
+    "status":"open"
+}
+
+PUT
+{
+    "id":1,
+    "name":"inserted-",
+    "count":"7",
+    "status":"open"
+}
+
+DELETE
+localhost:8080/items/1
+------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------
+for JUnit5 Test under src/test/java/org.acme/GreetingResourceTest
+
+@QuarkusTest
+public class GreetingResourceTest {
+
+    @Test
+    public void testHelloEndpoint() {
+        given()
+          .when().get("/hello")
+          .then()
+             .statusCode(200)
+             .body(is("Hello from RESTEasy Reactive"));
+    }
+
+    @Test
+    public void testGet(){
+        given()
+            .when().get("/items")
+            .then()
+                .statusCode(200)
+                .body(
+                        containsString("[]")
+                );
+
+    }
+    @Test
+    public void testPost(){
+        //for post to persist data
+        given()
+                .body("{\n" +
+                        "    \"name\":\"inserted-two-update\",\n" +
+                        "    \"count\":\"17\",\n" +
+                        "    \"status\":\"open\"\n" +
+                        "}")
+                .header("Content-Type","application/json")
+            .when()
+                .post("/items")
+                .then()
+                .statusCode(204);
+
+        // for get to check data
+        given()
+                .when().get("/items")
+                .then()
+                .statusCode(200)
+                .body("$.size()", is(1),
+                "[0].name",is("inserted-two-update"),
+                        "[0].count",is("17"),
+                        "[0].status",is("open")
+                    );
+    }
+    @Test
+    public void testPut(){
+
+    }
+
+    @Test
+    public void testDelete(){
+
+    }
+
+}
+------------------------------------------------------------------------------------------

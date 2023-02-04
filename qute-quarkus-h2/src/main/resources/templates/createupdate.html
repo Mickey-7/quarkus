@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+</head>
+
+<body>
+    <div>
+        <h3>
+            {#if !isUpdate} Create {/if}
+
+            {#if isUpdate} Update {/if}
+
+            User
+        </h3>
+    </div>
+    <div>
+        <form action="
+        {#if isUpdate} /update/{user.id} {/if}  
+        {#if !isUpdate} /create {/if}
+        " method="post">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#if isUpdate}
+                    <tr>
+                        <td>{user.id}</td>
+                    </tr>
+                    {/if}
+
+                    <tr>
+                        <th>First Name</th>
+                        <td><input type="text" name="firstName" value="{#if user.firstName}{user.firstName}{/if}"></td>
+                    </tr>
+                    <tr>
+                        <th>Last Name</th>
+                        <td><input type="text" name="lastName" value="{#if user.lastName}{user.lastName}{/if}"></td>
+                    </tr>
+                    <tr>
+                        <th>Email</th>
+                        <td><input type="text" name="email" value="{#if user.email}{user.email}{/if}"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <button type="submit">Save</button>
+        </form>
+    </div>
+</body>
+
+</html>
