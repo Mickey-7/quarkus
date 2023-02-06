@@ -1,0 +1,979 @@
+reference : https://2much2learn.com/restful-event-driven-microservice-using-quarkus-jpa-kafka/
+
+-------------------------------------------------------------------------------------------------------------
+-> dependencies
+    YAML Configuration
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-config-yaml</artifactId>
+        </dependency>
+    Hibernate ORM with Panache
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm-panache</artifactId>
+        </dependency>
+    RESTEasy Classic
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-resteasy</artifactId>
+        </dependency>
+    RESTEasy Classic Jackson
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-resteasy-jackson</artifactId>
+        </dependency>
+    Hibernate Validator
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-validator</artifactId>
+        </dependency>
+    SmallRye Health
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-smallrye-health</artifactId>
+        </dependency>
+    JDBC Driver - PostgreSQl
+        <dependency>
+        <groupId>io.quarkus</groupId>
+        <artifactId>quarkus-jdbc-postgresql</artifactId>
+        </dependency>
+
+    Lombok
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.12</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-lang3</artifactId>
+    </dependency>
+
+    <!-- test containers -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>postgresql</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+-------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------
+-> Default project structure autogeneration below
+    GreetingConfig (Interface)
+    GreetingResource
+    MyEntity
+    MyLivenessCheck
+
+    the import.sql file under src/main/resources/
+    also notice the application.yml because of the yaml dependency on pom.xml
+
+    there is also a default boiler plate code on application.yml
+    greeting:
+        message: "hello"
+    quarkus:
+        hibernate-orm:
+            database:
+                generation: "drop-and-create"
+
+    to run - Edit Configuration -> Add -> Maven -> Run : quarkus :dev
+-------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------
+-> application.yml - remove the boiler plate code and type below config
+    
+    quarkus:
+    # datasource config
+        datasource:
+            db-kind: postgresql
+            username: postgres
+            password: password
+            jdbc:
+                driver: org.postgresql.Driver
+                url : jdbc:postgresql://localhost:5432/catalogdb
+    
+    # hibernate orm config
+    hibernate-orm:
+        database:
+            generation: drop-and-create
+
+    make sure catalogdb is created in postgres
+-------------------------------------------------------------------------------------------------------------
+
+Custom Validation for Enum class as field - invoked in CatalogItem
+-------------------------------------------------------------------------------------------------------------
+-> validation/IEnumValidator - custom interface for validation of input enum class (Category) to a field in CatalogItem
+
+    import javax.validation.Constraint;
+    import java.lang.annotation.*;
+
+    @Documented
+    @Retention(RetentionPolicy.RUNTIME)
+    @Target(ElementType.FIELD)
+    //added after creating EnumValidator class
+    @Constraint(validatedBy = EnumValidator.class)
+    //e.o.a.
+    public @interface IEnumValidator {
+        Class<? extends  Enum<?>> enumClazz();
+        String message() default "Value is not valid";
+        Class<?>[] groups() default {};
+        Class<? extends Payload>[] payload() default {};
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+-> validation/EnumValidator - implementation of validation process for the input enum class 
+
+    import javax.validation.ConstraintValidator;
+    import javax.validation.ConstraintValidatorContext;
+    import java.util.ArrayList;
+    import java.util.List;
+    import org.apache.commons.lang3.StringUtils;
+    public class EnumValidator implements ConstraintValidator<IEnumValidator,String> {
+        List<String> valueList = null;
+        
+        @Override
+        public void initialize(IEnumValidator constraintAnnotation) {
+            valueList = new ArrayList<>();
+            Class<? extends Enum<?>> enumClass = constraintAnnotation.enumClazz();
+            Enum[] enumValArr = enumClass.getEnumConstants();
+            for (Enum enumVal : enumValArr) {
+                valueList.add(enumVal.toString().toUpperCase());
+            }
+        }
+
+        @Override
+        public boolean isValid(String s, ConstraintValidatorContext constraintValidatorContext) {
+            return !StringUtils.isEmpty(s) && valueList.contains(s.toUpperCase());
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Model
+-------------------------------------------------------------------------------------------------------------
+->model/Category - enum class to be invoked in CatalogItem class
+    
+    import lombok.AllArgsConstructor;
+    import lombok.Getter;
+
+    @AllArgsConstructor
+    public enum Category {
+        BOOKS("Books"),
+        MUSIC("Music"),
+        MOVIES("Movies"),
+        GAMES("Games"),
+        ELECTRONICS("Electronics"),
+        COMPUTERS("Computers"),
+        OFFICE("Office");
+        @Getter
+        private String value;
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->model/CatalogItem - invoked Category and its validator
+
+    import lombok.AllArgsConstructor;
+    import lombok.Data;
+    import lombok.NoArgsConstructor;
+    import lombok.NonNull;
+    import org.acme.validation.IEnumValidator;
+
+    import javax.persistence.*;
+    import javax.validation.constraints.NotEmpty;
+    import javax.validation.constraints.NotNull;
+    import java.util.Date;
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Entity
+    @Table(name = "CATALOG_ITEMS",
+        uniqueConstraints = {
+            @UniqueConstraint(columnNames = "SKU_NUMBER")
+        }
+    )
+    public class CatalogItem {
+        @Id
+        @GeneratedValue(strategy = GenerationType.IDENTITY)
+        @Column(name = "ID", unique = true, nullable = false)
+        private Long id;
+
+        @NotEmpty(message = "SKU cannot be null or empty")
+        @NonNull
+        @Column(name = "SKU_NUMBER", unique = true, nullable = false, length = 16)
+        private String sku;
+
+        @NotEmpty(message = "Name cannot be empty or null")
+        @NonNull
+        @Column(name = "ITEM_NAME", unique = true, nullable = false, length = 255)
+        private String name;
+
+        @NotEmpty(message = "Description cannot be empty or null")
+        @NonNull
+        @Column(name = "DESCRIPTION", nullable = false, length = 500)
+        private String description;
+
+        @NonNull
+        @Column(name = "CATEGORY", nullable = false)
+        @IEnumValidator(
+                enumClazz = Category.class,
+                message = "invalid category provided"
+        )
+        private String category;
+
+        @NotNull(message = "Price cannot be empty or null")
+        @NonNull
+        @Column(name = "PRICE", nullable = false, precision = 10, scale = 2)
+        private Double price;
+
+        @NotNull(message = "Inventory cannot be empty or null")
+        @NonNull
+        @Column(name = "INVENTORY", nullable = false)
+        private Integer inventory;
+
+        @NonNull
+        @Temporal(TemporalType.TIMESTAMP)
+        @Column(name = "CREATED_ON", nullable = false, length = 19)
+        private Date createdOn;
+
+        @Column(name = "UPDATED_ON", nullable = true, length = 19)
+        private Date updatedOn;
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->model/CatalogItemList - invoked on CatalogItemController getCatalogItems method 
+
+    import io.quarkus.runtime.annotations.RegisterForReflection;
+    import lombok.AllArgsConstructor;
+    import lombok.Data;
+    import lombok.NoArgsConstructor;
+    import lombok.NonNull;
+
+    import java.util.List;
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @RegisterForReflection
+    public class CatalogItemList {
+        @NonNull
+        private List<CatalogItem> data;
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->model/ResourceIdentity - invoked on CatalogItemController addCatalogItem method
+
+    import io.quarkus.runtime.annotations.RegisterForReflection;
+    import lombok.AllArgsConstructor;
+    import lombok.Data;
+    import lombok.NoArgsConstructor;
+    import lombok.NonNull;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    @RegisterForReflection
+    public class ResourceIdentity {
+        @NonNull
+        private Long id;
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Repository
+-------------------------------------------------------------------------------------------------------------
+->repository/CatalogRepository - create a method to get CatalogItem by sku
+    import io.quarkus.hibernate.orm.panache.PanacheRepository;
+    import org.acme.model.CatalogItem;
+
+    import javax.enterprise.context.ApplicationScoped;
+    import java.util.Optional;
+
+    @ApplicationScoped
+    public class CatalogRepository implements PanacheRepository<CatalogItem> {
+        public Optional<CatalogItem> findBySku(String sku){
+            return find("sku",sku).singleResultOptional();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Exception
+-------------------------------------------------------------------------------------------------------------
+->exception/ResourceNotFoundException - invoked in getCatalogItemBySku on service
+    
+    public class ResourceNotFoundException extends Exception{
+        private static final long serialVersionUID = 1L;
+
+        public ResourceNotFoundException(String message) {
+            super(message);
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Service
+-------------------------------------------------------------------------------------------------------------
+->service/CatalogService - business logic implementation of crud
+
+    import io.quarkus.panache.common.Sort;
+    import org.acme.exception.ResourceNotFoundException;
+    import org.acme.model.CatalogItem;
+    import org.acme.repository.CatalogRepository;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import javax.enterprise.context.ApplicationScoped;
+    import javax.inject.Inject;
+    import javax.transaction.Transactional;
+    import java.util.Date;
+    import java.util.List;
+
+    @ApplicationScoped
+    public class CatalogService {
+        private Logger logger = LoggerFactory.getLogger(CatalogService.class);
+
+        @Inject
+        CatalogRepository catalogRepository;
+
+        //getCatalogItemBySku
+        private CatalogItem getCatalogItemBySku(String sku) throws ResourceNotFoundException {
+            CatalogItem catalogItem = catalogRepository.findBySku(sku)
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            String.format("catalog item is not found for sku : %s",sku)
+                    ));
+            return catalogItem;
+        }
+
+        //getCatalogItems
+        public List<CatalogItem> getCatalogItems(){
+            Sort sort = Sort.ascending("name");
+            return catalogRepository.listAll(sort);
+        }
+        
+        //getCatalogItem
+        public CatalogItem getCatalogItem(String skuNumber) throws ResourceNotFoundException {
+            return getCatalogItemBySku(skuNumber);
+        }
+
+        //addCatalogItem
+        @Transactional
+        public Long addCatalogItem(CatalogItem catalogItem){
+            catalogItem.setCreatedOn(new Date());
+            catalogRepository.persist(catalogItem);
+            return catalogItem.getId();
+        }
+
+        //deleteCatalogItem
+        @Transactional
+        public void deleteCatalogItem(String skuNumber) throws ResourceNotFoundException {
+            CatalogItem catalogItem = getCatalogItemBySku(skuNumber);
+            catalogRepository.delete(catalogItem);
+            catalogRepository.flush();
+
+        }
+        
+        //updateCatalogItem
+        @Transactional
+        public void updateCatalogItem(CatalogItem catalogItem) throws ResourceNotFoundException {
+            CatalogItem catalogItemDB = getCatalogItemBySku(catalogItem.getSku());
+            boolean priceDifference = catalogItemDB.getPrice() != catalogItem.getPrice();
+            
+            catalogItemDB.setUpdatedOn(new Date());
+            catalogItemDB.setName(catalogItem.getName());
+            catalogItemDB.setDescription(catalogItem.getDescription());
+            catalogItemDB.setPrice(catalogItem.getPrice());
+            catalogItemDB.setInventory(catalogItem.getInventory());
+            
+            if (priceDifference){
+                //invoked product price event
+            }
+            catalogRepository.persist(catalogItemDB);
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Controller
+-------------------------------------------------------------------------------------------------------------
+->controller/CatalogueControllerAPIPaths - defined all the API endpoint paths
+
+    public class CatalogueControllerAPIPaths {
+        public static final String BASE_PATH = "/api/v1";
+        public static final String CREATE = "/";
+        public static final String GET_ITEMS = "/";
+        public static final String GET_ITEM = "/{sku}";
+        public static final String UPDATE = "/{sku}";
+        public static final String DELETE = "/{sku}";
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->controller/CatalogItemController - 
+
+    import org.acme.exception.ResourceNotFoundException;
+    import org.acme.model.CatalogItem;
+    import org.acme.model.CatalogItemList;
+    import org.acme.model.ResourceIdentity;
+    import org.acme.service.CatalogService;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import javax.inject.Inject;
+    import javax.validation.Valid;
+    import javax.ws.rs.*;
+    import javax.ws.rs.core.MediaType;
+    import javax.ws.rs.core.Response;
+
+    @Path(CatalogueControllerAPIPaths.BASE_PATH)
+    @Produces(MediaType.APPLICATION_JSON)
+    public class CatalogItemController {
+        private Logger logger = LoggerFactory.getLogger(CatalogItemController.class);
+
+        @Inject
+        CatalogService catalogService;
+
+        //getCatalogItems
+        @GET
+        @Path(CatalogueControllerAPIPaths.GET_ITEMS)
+        public Response getCatalogItems(){
+            logger.info("getting catalog items");
+            //invoked CatalogItemList
+            return Response.ok(new CatalogItemList(catalogService.getCatalogItems())).build();
+        }
+
+        //getCatalogItem
+        @GET
+        @Path(CatalogueControllerAPIPaths.GET_ITEM)
+        public Response getCatalogItemBySku(@PathParam("sku") String skuNumber) throws ResourceNotFoundException {
+            logger.info(String.format("getting catalog item with sku : %s",skuNumber));
+            return Response.ok(catalogService.getCatalogItem(skuNumber)).build();
+        }
+
+        //addCatalogItem
+        @POST
+        @Path(CatalogueControllerAPIPaths.CREATE)
+        public Response addCatalogItem(@Valid CatalogItem catalogItem){
+            logger.info(String.format("adding catalog item with sku : %s",catalogItem.getSku()));
+            Long id = catalogService.addCatalogItem(catalogItem);
+            //invoked ResourceIdentity
+            return Response.status(Response.Status.CREATED).entity(new ResourceIdentity(id)).build();
+        }
+
+        //deleteCatalogItem
+        @DELETE
+        @Path(CatalogueControllerAPIPaths.DELETE)
+        public Response deleteCatalogItem(@PathParam("sku") String skuNumber) throws ResourceNotFoundException {
+            logger.info(String.format("removing catalog item with sku : %s",skuNumber));
+            catalogService.deleteCatalogItem(skuNumber);
+            return Response.status(Response.Status.NO_CONTENT).build();
+        }
+
+        //updateCatalogItem
+        @PUT
+        @Path(CatalogueControllerAPIPaths.UPDATE)
+        public Response updateCatalogItem(@PathParam("sku") String skuNumber, @Valid CatalogItem catalogItem) throws ResourceNotFoundException {
+            logger.info(String.format("===> updating catalog item with sku : %s",skuNumber));
+            catalogService.updateCatalogItem(catalogItem);
+            return Response.ok().build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+
+
+Handling Exceptions
+-------------------------------------------------------------------------------------------------------------
+Exception Handling is done with ExceptionMapper with JAX-RS. 
+    RESTEasy ExceptionMappers are custom, application provided, components that 
+    can catch thrown application exceptions and write specific HTTP responses. 
+    
+    The are classes annotated with @Provider and that implement this interface.
+
+    When an application exception is thrown it will be caught by the JAX-RS runtime. 
+    
+    JAX-RS will then scan registered ExceptionMappers to see 
+    which one support marshalling the exception type thrown.
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->error/Error - template for error content - invoked on mapper
+    
+    import lombok.AllArgsConstructor;
+    import lombok.Data;
+    import lombok.NoArgsConstructor;
+    import lombok.NonNull;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public class Error {
+        @NonNull
+        private int code;
+
+        @NonNull
+        private String message;
+        @NonNull
+        private String description;
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->error/ErrorCodes - description of all error exceptions - invoked on mapper
+
+    public class ErrorCodes {
+        public static final  int ERR_RUNTIME=1000;
+        public static final  int ERR_HANDLER_NOT_FOUND=1010;
+        public static final  int ERR_RESOURCE_NOT_FOUND=1020;
+        public static final  int ERR_REQUEST_PARAMS_BODY_VALIDATION_FAILED=1030;
+        public static final  int ERR_CONSTRAINT_CHECK_FAILED=1040;
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->error/ErrorResponse - list of Error class - invoked on mapper
+
+    @Data
+    public class ErrorResponse {
+        private List<Error> errors = new ArrayList<>();
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->mapper/ConstraintViolationMapper - captures invalid request body and other validation error
+
+    import org.acme.error.Error;
+    import org.acme.error.ErrorCodes;
+    import org.acme.error.ErrorResponse;
+
+    import javax.validation.ConstraintViolation;
+    import javax.validation.ConstraintViolationException;
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.ext.ExceptionMapper;
+    import javax.ws.rs.ext.Provider;
+
+    @Provider
+    public class ConstraintViolationMapper implements ExceptionMapper<ConstraintViolationException> {
+        @Override
+        public Response toResponse(ConstraintViolationException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            for (ConstraintViolation violation : e.getConstraintViolations()){
+                errorResponse.getErrors().add(
+                        new Error(
+                                ErrorCodes.ERR_CONSTRAINT_CHECK_FAILED,
+                                violation.getPropertyPath().toString(),
+                                violation.getMessage()
+                        )
+                );
+            }
+            return Response.status(Response.Status.BAD_REQUEST).entity(errorResponse).build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->mapper/InvalidFormatExceptionMapper - captures invalid data format on request body
+
+    import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+    import org.acme.error.Error;
+    import org.acme.error.ErrorCodes;
+    import org.acme.error.ErrorResponse;
+
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.ext.ExceptionMapper;
+    import javax.ws.rs.ext.Provider;
+
+    @Provider
+    public class InvalidFormatExceptionMapper implements ExceptionMapper<InvalidFormatException> {
+        @Override
+        public Response toResponse(InvalidFormatException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_REQUEST_PARAMS_BODY_VALIDATION_FAILED,
+                            "invalid request format. please verify your body and try again",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.BAD_REQUEST).entity(errorResponse).build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->mapper/NotFoundExceptionMapper  - captures invalid url path
+
+    import org.acme.error.Error;
+    import org.acme.error.ErrorCodes;
+    import org.acme.error.ErrorResponse;
+
+    import javax.ws.rs.NotFoundException;
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.ext.ExceptionMapper;
+    import javax.ws.rs.ext.Provider;
+
+    @Provider
+    public class NotFoundExceptionMapper implements ExceptionMapper<NotFoundException> {
+        @Override
+        public Response toResponse(NotFoundException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_HANDLER_NOT_FOUND,
+                            "invalid path",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.NOT_FOUND).entity(errorResponse).build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->mapper/ResourceNotFoundExceptionMapper - handles resource not found request
+
+    import org.acme.error.Error;
+    import org.acme.error.ErrorCodes;
+    import org.acme.error.ErrorResponse;
+    import org.acme.exception.ResourceNotFoundException;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.ext.ExceptionMapper;
+    import javax.ws.rs.ext.Provider;
+
+    @Provider
+    public class ResourceNotFoundExceptionMapper implements ExceptionMapper<ResourceNotFoundException> {
+        private Logger log = LoggerFactory.getLogger(ResourceNotFoundExceptionMapper.class);
+
+        @Override
+        public Response toResponse(ResourceNotFoundException e) {
+            log.error(String.format("no resource found exception occurred : %s",e.getMessage()));
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_RESOURCE_NOT_FOUND,
+                            "resource not found",
+                            e.getMessage()
+                    )
+            );
+            return Response.status(Response.Status.NOT_FOUND).entity(errorResponse).build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->mapper/RuntimeExceptionMapper  - handles runtime exception
+
+    import org.acme.error.Error;
+    import org.acme.error.ErrorCodes;
+    import org.acme.error.ErrorResponse;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.ext.ExceptionMapper;
+    import javax.ws.rs.ext.Provider;
+
+    @Provider
+    public class RuntimeExceptionMapper implements ExceptionMapper<RuntimeException> {
+        private Logger log = LoggerFactory.getLogger(RuntimeExceptionMapper.class);
+        @Override
+        public Response toResponse(RuntimeException e) {
+            ErrorResponse errorResponse = new ErrorResponse();
+            errorResponse.getErrors().add(
+                    new Error(
+                            ErrorCodes.ERR_RUNTIME,
+                            "internal server error",
+                            "error occurred while processing your request. please try again !!"
+                    )
+            );
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR).entity(errorResponse).build();
+        }
+    }
+
+    forced throw new runtime exception
+
+    //getCatalogItems
+    @GET
+    @Path(CatalogueControllerAPIPaths.GET_ITEMS)
+    public Response getCatalogItems(){
+        //for RuntimeExceptionMapper  test only
+        throw new RuntimeException();
+        //logger.info("getting catalog items");
+        //invoked CatalogItemList
+        //return Response.ok(new CatalogItemList(catalogService.getCatalogItems())).build();
+    }
+-------------------------------------------------------------------------------------------------------------
+
+Postman
+-------------------------------------------------------------------------------------------------------------
+POST localhost:8080/api/v1
+    Request :
+        {
+            "sku": "CTLG-123-0001",
+            "name": "The Avengers",
+            "description": "Marvel's The Avengers Movie",
+            "category": "Movies",
+            "price": 0.0,
+            "inventory": 0
+        }
+
+    Response :
+        {
+            "data": []
+        }
+-------------------------------------------------------------------------------------------------------------
+GET localhost:8080/api/v1
+    Response :
+        {
+            "data": [
+                {
+                    "id": 1,
+                    "sku": "CTLG-123-0001",
+                    "name": "The Avengers",
+                    "description": "Marvel's The Avengers Movie",
+                    "category": "Movies",
+                    "price": 0.0,
+                    "inventory": 0,
+                    "createdOn": "2023-02-04T04:29:33.815+00:00",
+                    "updatedOn": null
+                }
+            ]
+        }
+-------------------------------------------------------------------------------------------------------------
+PUT localhost:8080/api/v1/CTLG-123-0001
+    Request
+        {
+            "sku": "CTLG-123-0001",
+            "name": "The Avengers",
+            "description": "Marvel's The Avengers Movie",
+            "category": "Movies",
+            "price": 95.99,
+            "inventory": 10
+        }
+-------------------------------------------------------------------------------------------------------------
+GET localhost:8080/api/v1/CTLG-123-0001
+    Response
+        {
+            "id": 1,
+            "sku": "CTLG-123-0001",
+            "name": "The Avengers",
+            "description": "Marvel's The Avengers Movie",
+            "category": "Movies",
+            "price": 95.99,
+            "inventory": 10,
+            "createdOn": "2023-02-04T04:29:33.815+00:00",
+            "updatedOn": "2023-02-04T04:31:49.505+00:00"
+        }
+-------------------------------------------------------------------------------------------------------------
+DELETE localhost:8080/api/v1/CTLG-123-0001
+-------------------------------------------------------------------------------------------------------------
+GET localhost:8080/api/v1/
+    Response
+        {
+            "data": []
+        }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->Test for ConstraintViolationMapper by passing invalid request body.
+    POST localhost:8080/api/v1
+
+    Request
+    {
+        "sku": "CTLG-123-0001",
+        "name": "The Avengers",
+        "description": "Marvel's The Avengers Movie"
+    }
+    
+    Response - before ConstraintViolationMapper
+    {
+        "exception": null,
+        "propertyViolations": [],
+        "classViolations": [],
+        "parameterViolations": [
+            {
+                "constraintType": "PARAMETER",
+                "path": "addCatalogItem.catalogItem.category",
+                "message": "invalid category provided",
+                "value": ""
+            },
+            {
+                "constraintType": "PARAMETER",
+                "path": "addCatalogItem.catalogItem.inventory",
+                "message": "Inventory cannot be empty or null",
+                "value": ""
+            },
+            {
+                "constraintType": "PARAMETER",
+                "path": "addCatalogItem.catalogItem.price",
+                "message": "Price cannot be empty or null",
+                "value": ""
+            }
+        ],
+        "returnValueViolations": []
+    }
+
+    Reesponse - after ConstraintViolationMapper
+    {
+        "errors": [
+            {
+                "code": 1040,
+                "message": "addCatalogItem.catalogItem.inventory",
+                "description": "Inventory cannot be empty or null"
+            },
+            {
+                "code": 1040,
+                "message": "addCatalogItem.catalogItem.price",
+                "description": "Price cannot be empty or null"
+            },
+            {
+                "code": 1040,
+                "message": "addCatalogItem.catalogItem.category",
+                "description": "invalid category provided"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->Test for InvalidFormatExceptionMapper by passing invalid request body.
+    POST localhost:8080/api/v1
+
+    Request
+    {
+        "sku": "CTLG-123-0001",
+        "name": "The Avengers",
+        "description": "Marvel's The Avengers Movie",
+        "category": "Movies",
+        "price": "INVALID",
+        "inventory": 0
+    }
+
+    Response - before InvalidFormatExceptionMapper
+    com.fasterxml.jackson.databind.exc.InvalidFormatException: Cannot deserialize value of type `java.lang.Double` from
+    String &quot;INVALID&quot;: not a valid `Double` value
+    at [Source: (io.quarkus.vertx.http.runtime.VertxInputStream); line: 6, column: 11] (through reference chain:
+    org.acme.model.CatalogItem[&quot;price&quot;])
+
+    Response - after InvalidFormatExceptionMapper
+    {
+        "errors": [
+            {
+                "code": 1030,
+                "message": "invalid request format. please verify your body and try again",
+                "description": "Cannot deserialize value of type `java.lang.Double` from String \"INVALID\": not a valid `Double` value\n at [Source: (io.quarkus.vertx.http.runtime.VertxInputStream); line: 6, column: 11] (through reference chain: org.acme.model.CatalogItem[\"price\"])"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->Test for NotFoundExceptionMapper  by passing invalid request body.
+    
+    GET localhost:8080/api/v1pathnotfound
+    
+    Response - before NotFoundExceptionMapper  : No response body
+    Response - after NotFoundExceptionMapper 
+    {
+        "errors": [
+            {
+                "code": 1010,
+                "message": "invalid path",
+                "description": "RESTEASY003210: Could not find resource for full path: http://localhost:8080/api/v1pathnotfound"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->Test for ResourceNotFoundExceptionMapper  by getting invalid skuNumber.
+   GET localhost:8080/api/v1/CTLG-123-0001
+
+    Response - before ResourceNotFoundExceptionMapper 
+    {
+        "details": "Error id 40521d71-2582-4eca-a394-8d6dd9ce9e7d-2, org.jboss.resteasy.spi.UnhandledException: org.acme.exception.ResourceNotFoundException: catalog item is not found for sku : CTLG-123-0001",
+        "stack": "org.jboss.resteasy.spi.UnhandledException: org.acme.exception.ResourceNotFoundException: catalog item is not found for sku : CTLG-123-0001\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleApplicationException(ExceptionHandler.java:105)\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleException(ExceptionHandler.java:359)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.writeException(SynchronousDispatcher.java:218)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:519)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)\r\n\tat io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)\r\n\tat io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)\r\n\tat org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)\r\n\tat org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)\r\n\tat io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)\r\n\tat java.base/java.lang.Thread.run(Thread.java:829)\r\nCaused by: org.acme.exception.ResourceNotFoundException: catalog item is not found for sku : CTLG-123-0001\r\n\tat org.acme.service.CatalogService.lambda$getCatalogItemBySku$0(CatalogService.java:27)\r\n\tat java.base/java.util.Optional.orElseThrow(Optional.java:408)\r\n\tat org.acme.service.CatalogService.getCatalogItemBySku(CatalogService.java:26)\r\n\tat org.acme.service.CatalogService.getCatalogItem(CatalogService.java:40)\r\n\tat org.acme.service.CatalogService_ClientProxy.getCatalogItem(Unknown Source)\r\n\tat org.acme.controller.CatalogItemController.getCatalogItemBySku(CatalogItemController.java:39)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:566)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:170)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:130)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)\r\n\t... 15 more"
+    }
+
+    Response - after ResourceNotFoundExceptionMapper
+    {
+        "errors": [
+            {
+                "code": 1020,
+                "message": "resource not found",
+                "description": "catalog item is not found for sku : CTLG-123-0001"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->Test for RuntimeExceptionMapper by forcing throw new runtime exception on getCatalogItems
+    GET localhost:8080/api/v1
+
+    Response - before RuntimeExceptionMapper 
+    {
+        "details": "Error id 67fe08c8-2f26-40ab-a45f-61bd2140503d-1, org.jboss.resteasy.spi.UnhandledException: java.lang.RuntimeException",
+        "stack": "org.jboss.resteasy.spi.UnhandledException: java.lang.RuntimeException\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleApplicationException(ExceptionHandler.java:105)\r\n\tat org.jboss.resteasy.core.ExceptionHandler.handleException(ExceptionHandler.java:359)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.writeException(SynchronousDispatcher.java:218)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:519)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)\r\n\tat io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)\r\n\tat io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)\r\n\tat io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)\r\n\tat org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)\r\n\tat org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)\r\n\tat org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)\r\n\tat io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)\r\n\tat java.base/java.lang.Thread.run(Thread.java:829)\r\nCaused by: java.lang.RuntimeException\r\n\tat org.acme.controller.CatalogItemController.getCatalogItems(CatalogItemController.java:30)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)\r\n\tat java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)\r\n\tat java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)\r\n\tat java.base/java.lang.reflect.Method.invoke(Method.java:566)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:170)\r\n\tat org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:130)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)\r\n\tat org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)\r\n\tat org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)\r\n\tat org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)\r\n\t... 15 more"
+    }
+
+    Response - after RuntimeExceptionMapper 
+    {
+        "errors": [
+            {
+                "code": 1000,
+                "message": "internal server error",
+                "description": "error occurred while processing your request. please try again !!"
+            }
+        ]
+    }
+-------------------------------------------------------------------------------------------------------------
+
+
+
+TEST CONTAINERS - Integration testing : testing with database - needs to start & restart docker before testing
+-------------------------------------------------------------------------------------------------------------
+->BaseTest - create reusable method under src/test/java/org.acme/ then extends it to test class
+
+    import io.restassured.builder.ResponseSpecBuilder;
+    import io.restassured.response.Response;
+    import io.restassured.specification.RequestSpecification;
+    import io.restassured.specification.ResponseSpecification;
+    import org.acme.model.CatalogItem;
+    import org.acme.model.Category;
+
+
+    import java.util.Date;
+    import java.util.Random;
+
+    import static io.restassured.RestAssured.given;
+
+    public class BaseTest {
+        final Random random = new Random();
+        String prepareRandomSkUNumber(){
+            return "SKUNumber-"+random.ints(1000,9999).findFirst().getAsInt();
+        }
+
+        CatalogItem prepareCatalogItem(String skuNumber){
+            CatalogItem catalogItem = new CatalogItem();
+            catalogItem.setSku(skuNumber);
+            catalogItem.setName("catalog Item - "+skuNumber);
+            catalogItem.setDescription("catalog desc - "+skuNumber);
+            catalogItem.setCategory(Category.BOOKS.getValue());
+            catalogItem.setPrice(10.00);
+            catalogItem.setInventory(10);
+            catalogItem.setCreatedOn(new Date());
+            return catalogItem;
+        }
+
+        Response postCatalogItem(CatalogItem catalogItem){
+            RequestSpecification requestSpecification =
+                    given()
+                            .contentType("application/json")
+                            .body(catalogItem);
+            return  requestSpecification.post("/");
+        }
+        
+        ResponseSpecification prepareResponseSpec(int responseStatus){
+            return new ResponseSpecBuilder()
+                    .expectStatusCode(responseStatus)
+                    .build();
+        }
+    }
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+->RestAssuredCatalogTest - extends BaseTest to make test for crud
+
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------

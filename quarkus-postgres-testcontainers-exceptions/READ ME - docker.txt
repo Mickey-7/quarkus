@@ -1,0 +1,675 @@
+--------------------------------------------------------------------------------------------------------------------------------------------------
+pom.xml
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-jdbc-mysql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>mysql</artifactId>
+      <version>1.17.6</version>
+      <scope>test</scope>
+    </dependency>
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+application.yml: make sure the image to be pulled by testcontainers for mysql is version 8.0.18 as latest wont work
+
+    #test config
+    "%test":
+    quarkus:
+        datasource:
+        db-kind: mysql
+        jdbc:
+            driver: org.testcontainers.jdbc.ContainerDatabaseDriver
+            url: jdbc:tc:mysql:8.0.18:///catalogdb
+
+
+    #test - hibernate orm config
+        hibernate-orm:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+        database:
+        generation: drop-and-create
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+docker as testcontainers:
+
+    ->start docker
+    ->open cmd
+    ->type docker images -a
+        C:\Users\MMACARANAS>docker images -a
+        REPOSITORY          TAG                 IMAGE ID            CREATED             
+    ->type docker ps -a
+        C:\Users\MMACARANAS>docker ps -a
+        CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+    -> run the app
+    ->input r then press enter:
+        r
+        Starting tests
+        Press [r] to re-run, [h] for more options>
+        Press [r] to re-run, [o] Toggle test output, [h] for more options>
+        Running tests for the first time
+        Press [h] for more options>
+        Press [o] Toggle test output, [h] for more options>
+
+        Starting test run, 2 tests to run.
+        Running 1/2. Running: #JUnit Jupiter
+        Running 1/2. Running: org.acme.GreetingResourceTest#GreetingResourceTest
+        Running 1/2. Running: org.acme.GreetingResourceTest#testHelloEndpoint()
+        Running 2/2. 1 failure so far. Running: org.acme.RestAssuredCatalogTest#RestAssuredCatalogTest
+        Running 2/2. 1 failure so far. Running: org.acme.RestAssuredCatalogTest#test for getCatalogItems
+        Press [r] to re-run, [h] for more options>
+        Press [r] to re-run, [o] Toggle test output, [h] for more options>
+        2023-02-06 08:26:45,125 ERROR [io.qua.test] (Test runner thread) ==================== TEST REPORT #1 ====================
+        2023-02-06 08:26:45,127 ERROR [io.qua.test] (Test runner thread) Test GreetingResourceTest#testHelloEndpoint() failed 
+        : java.lang.RuntimeException: java.lang.RuntimeException: Failed to start quarkus
+            at io.quarkus.test.junit.QuarkusTestExtension.throwBootFailureException(QuarkusTestExtension.java:625)
+            at io.quarkus.test.junit.QuarkusTestExtension.interceptTestClassConstructor(QuarkusTestExtension.java:696)
+            at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+            at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+            at org.junit.jupiter.api.extension.InvocationInterceptor.interceptTestClassConstructor(InvocationInterceptor.java:73)
+            at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+            at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+            at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+            at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+            at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+            at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+            at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:62)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.invokeTestClassConstructor(ClassBasedTestDescriptor.java:363)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.instantiateTestClass(ClassBasedTestDescriptor.java:310)
+            at org.junit.jupiter.engine.descriptor.ClassTestDescriptor.instantiateTestClass(ClassTestDescriptor.java:79)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.instantiateAndPostProcessTestInstance(ClassBasedTestDescriptor.java:286)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$testInstancesProvider$4(ClassBasedTestDescriptor.java:278)
+            at java.base/java.util.Optional.orElseGet(Optional.java:369)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$testInstancesProvider$5(ClassBasedTestDescriptor.java:277)
+            at org.junit.jupiter.engine.execution.TestInstancesProvider.getTestInstances(TestInstancesProvider.java:31)
+            at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$prepare$0(TestMethodTestDescriptor.java:105)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.prepare(TestMethodTestDescriptor.java:104)
+            at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.prepare(TestMethodTestDescriptor.java:68)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$prepare$2(NodeTestTask.java:123)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.prepare(NodeTestTask.java:123)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:90)
+            at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+            at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+            at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+            at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+            at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+            at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+            at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+            at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+            at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:147)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:127)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:90)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:55)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:102)
+            at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:54)
+            at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+            at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:95)
+            at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:91)
+            at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:60)
+            at io.quarkus.deployment.dev.testing.JunitTestRunner$2.run(JunitTestRunner.java:228)
+            at io.quarkus.deployment.dev.testing.ModuleTestRunner$2.run(ModuleTestRunner.java:92)
+            at io.quarkus.deployment.dev.testing.TestSupport.runInternal(TestSupport.java:390)
+            at io.quarkus.deployment.dev.testing.TestSupport$2.run(TestSupport.java:310)
+            at java.base/java.lang.Thread.run(Thread.java:829)
+        Caused by: java.lang.RuntimeException: Failed to start quarkus
+            at io.quarkus.runner.ApplicationImpl.doStart(Unknown Source)
+            at io.quarkus.runtime.Application.start(Application.java:101)
+            at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+            at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+            at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+            at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+            at io.quarkus.runner.bootstrap.StartupActionImpl.run(StartupActionImpl.java:253)
+            at io.quarkus.test.junit.QuarkusTestExtension.doJavaStart(QuarkusTestExtension.java:250)
+            at io.quarkus.test.junit.QuarkusTestExtension.ensureStarted(QuarkusTestExtension.java:592)
+            at io.quarkus.test.junit.QuarkusTestExtension.beforeAll(QuarkusTestExtension.java:640)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$invokeBeforeAllCallbacks$12(ClassBasedTestDescriptor.java:395)
+            at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.invokeBeforeAllCallbacks(ClassBasedTestDescriptor.java:395)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.before(ClassBasedTestDescriptor.java:211)
+            at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.before(ClassBasedTestDescriptor.java:84)
+            at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:148)
+            ... 35 more
+        Caused by: java.lang.RuntimeException: javax.persistence.PersistenceException: [PersistenceUnit: <default>] Unable to build Hibernate SessionFactory
+            at io.quarkus.hibernate.orm.runtime.JPAConfig.startAll(JPAConfig.java:82)
+            at io.quarkus.hibernate.orm.runtime.HibernateOrmRecorder.startAllPersistenceUnits(HibernateOrmRecorder.java:95)
+            at io.quarkus.deployment.steps.HibernateOrmProcessor$startPersistenceUnits1868654632.deploy_0(Unknown Source)
+            at io.quarkus.deployment.steps.HibernateOrmProcessor$startPersistenceUnits1868654632.deploy(Unknown Source)
+            ... 51 more
+        Caused by: javax.persistence.PersistenceException: [PersistenceUnit: <default>] Unable to build Hibernate SessionFactory
+            at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.persistenceException(FastBootEntityManagerFactoryBuilder.java:116)
+            at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:76)
+            at io.quarkus.hibernate.orm.runtime.FastBootHibernatePersistenceProvider.createEntityManagerFactory(FastBootHibernatePersistenceProvider.java:72)
+            at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:80)
+            at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:55)
+            at io.quarkus.hibernate.orm.runtime.JPAConfig$LazyPersistenceUnit.get(JPAConfig.java:167)
+            at io.quarkus.hibernate.orm.runtime.JPAConfig$1.run(JPAConfig.java:68)
+            ... 1 more
+        Caused by: org.hibernate.exception.GenericJDBCException: Unable to open JDBC Connection for DDL execution
+            at org.hibernate.exception.internal.StandardSQLExceptionConverter.convert(StandardSQLExceptionConverter.java:42)
+            at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:113)
+            at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:99)
+            at org.hibernate.resource.transaction.backend.jta.internal.DdlTransactionIsolatorJtaImpl.<init>(DdlTransactionIsolatorJtaImpl.java:62)
+            at org.hibernate.resource.transaction.backend.jta.internal.JtaTransactionCoordinatorBuilderImpl.buildDdlTransactionIsolator(JtaTransactionCoordinatorBuilderImpl.java:53)
+            at org.hibernate.tool.schema.internal.HibernateSchemaManagementTool.getDdlTransactionIsolator(HibernateSchemaManagementTool.java:205)
+            at org.hibernate.tool.schema.internal.HibernateSchemaManagementTool.buildGenerationTargets(HibernateSchemaManagementTool.java:160)
+            at org.hibernate.tool.schema.internal.SchemaDropperImpl.doDrop(SchemaDropperImpl.java:112)
+            at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.performDatabaseAction(SchemaManagementToolCoordinator.java:157)
+            at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.process(SchemaManagementToolCoordinator.java:85)
+            at org.hibernate.internal.SessionFactoryImpl.<init>(SessionFactoryImpl.java:335)
+            at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:74)
+            ... 6 more
+        Caused by: java.sql.SQLException: Acquisition timeout while waiting for new connection
+            at io.agroal.pool.ConnectionPool.handlerFromSharedCache(ConnectionPool.java:320)
+            at io.agroal.pool.ConnectionPool.getConnection(ConnectionPool.java:248)
+            at io.agroal.pool.DataSource.getConnection(DataSource.java:86)
+            at io.quarkus.hibernate.orm.runtime.customized.QuarkusConnectionProvider.getConnection(QuarkusConnectionProvider.java:23)
+            at org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator$ConnectionProviderJdbcConnectionAccess.obtainConnection(JdbcEnvironmentInitiator.java:181)
+            at org.hibernate.resource.transaction.backend.jta.internal.DdlTransactionIsolatorJtaImpl.<init>(DdlTransactionIsolatorJtaImpl.java:59)
+            ... 14 more
+        Caused by: java.util.concurrent.TimeoutException
+            at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:204)
+            at io.agroal.pool.ConnectionPool.handlerFromSharedCache(ConnectionPool.java:296)
+            ... 19 more
+
+        2023-02-06 08:26:45,134 ERROR [io.qua.test] (Test runner thread) >>>>>>>>>>>>>>>>>>>> Summary: <<<<<<<<<<<<<<<<<<<<
+        GreetingResourceTest#testHelloEndpoint() java.lang.RuntimeException: Failed to start quarkus
+        2023-02-06 08:26:45,138 ERROR [io.qua.test] (Test runner thread) >>>>>>>>>>>>>>>>>>>> 1 TEST FAILED <<<<<<<<<<<<<<<<<<<<
+        1 test failed (0 passing, 1 skipped), 1 test was run in 14273ms. Tests completed at 08:26:45.
+        2023-02-06 08:26:47,704 INFO  [doc.3.4]] (docker-java-stream-257369379) Starting to pull image
+        2023-02-06 08:26:47,706 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  0 downloaded,  0 extracted, (0 bytes/0 bytes)
+        2023-02-06 08:26:49,558 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  2 pending,  1 downloaded,  0 extracted, (317 KB/? MB)
+        2023-02-06 08:26:49,868 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  1 pending,  2 downloaded,  0 extracted, (3 MB/? MB)
+        2023-02-06 08:26:49,878 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  0 extracted, (3 MB/5 MB)
+        2023-02-06 08:26:50,565 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  1 extracted, (4 MB/5 MB)
+        2023-02-06 08:26:51,216 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  2 extracted, (4 MB/5 MB)
+        2023-02-06 08:26:51,789 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  3 extracted, (5 MB/5 MB)
+        2023-02-06 08:26:52,059 INFO  [doc.3.4]] (docker-java-stream-257369379) Pull complete. 3 layers, pulled in 4s (downloaded 5 MB at 1 MB/s)
+        2023-02-06 08:26:52,144 INFO  [doc.3.4]] (agroal-11) Creating container for image: testcontainers/ryuk:0.3.4
+        2023-02-06 08:26:52,783 INFO  [doc.3.4]] (agroal-11) Container testcontainers/ryuk:0.3.4 is starting: ef62c0263ec3fc227f670799ee21cb9868bcde687068eca6b3051d631fb89031
+        2023-02-06 08:26:53,986 INFO  [doc.3.4]] (agroal-11) Container testcontainers/ryuk:0.3.4 started in PT19.1291832S
+        2023-02-06 08:26:53,997 INFO  [org.tes.uti.RyukResourceReaper] (agroal-11) Ryuk started - will monitor and terminate Testcontainers containers on JVM exit
+        2023-02-06 08:26:53,997 INFO  [org.tes.DockerClientFactory] (agroal-11) Checking the system...
+        2023-02-06 08:26:53,998 INFO  [org.tes.DockerClientFactory] (agroal-11) ?? Docker server version should be at least 1.6.0
+        2023-02-06 08:26:54,003 INFO  [doc.0.18]] (agroal-11) Pulling docker image: mysql:8.0.18. Please be patient; this may take some time but only needs to be done once.
+        2023-02-06 08:26:56,667 INFO  [doc.0.18]] (docker-java-stream--466503511) Starting to pull image
+        2023-02-06 08:26:56,670 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending,  0 downloaded,  0 extracted, (0 bytes/0 bytes)
+        2023-02-06 08:26:58,470 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers: 11 pending,  1 downloaded,  0 extracted, (1 KB/? MB)
+        2023-02-06 08:26:58,955 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers: 10 pending,  2 downloaded,  0 extracted, (6 MB/? MB)
+        2023-02-06 08:26:59,734 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  9 pending,  3 downloaded,  0 extracted, (18 MB/? MB)
+        2023-02-06 08:26:59,969 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  8 pending,  4 downloaded,  0 extracted, (21 MB/? MB)
+        2023-02-06 08:27:00,176 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  7 pending,  5 downloaded,  0 extracted, (25 MB/? MB)
+        2023-02-06 08:27:01,189 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  6 pending,  6 downloaded,  0 extracted, (34 MB/? MB)
+        2023-02-06 08:27:01,192 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  5 pending,  7 downloaded,  0 extracted, (34 MB/? MB)
+        2023-02-06 08:27:01,223 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  4 pending,  8 downloaded,  0 extracted, (35 MB/? MB)
+        2023-02-06 08:27:01,739 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  4 pending,  8 downloaded,  1 extracted, (36 MB/? MB)
+        2023-02-06 08:27:02,067 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  3 pending,  9 downloaded,  1 extracted, (36 MB/? MB)
+        2023-02-06 08:27:02,109 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  2 pending, 10 downloaded,  1 extracted, (36 MB/? MB)
+        2023-02-06 08:27:02,348 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  2 pending, 10 downloaded,  2 extracted, (38 MB/? MB)
+        2023-02-06 08:27:03,057 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  2 pending, 10 downloaded,  3 extracted, (54 MB/? MB)
+        2023-02-06 08:27:03,155 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  1 pending, 11 downloaded,  3 extracted, (56 MB/? MB)
+        2023-02-06 08:27:03,561 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  1 pending, 11 downloaded,  4 extracted, (63 MB/? MB)
+        2023-02-06 08:27:04,040 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  1 pending, 11 downloaded,  5 extracted, (72 MB/? MB)
+        2023-02-06 08:27:06,801 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded,  5 extracted, (126 MB/127 MB)
+        2023-02-06 08:27:07,295 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded,  6 extracted, (126 MB/127 MB)
+        2023-02-06 08:27:07,762 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded,  7 extracted, (126 MB/127 MB)
+        2023-02-06 08:27:08,404 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded,  8 extracted, (126 MB/127 MB)
+        2023-02-06 08:27:13,764 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded,  9 extracted, (127 MB/127 MB)
+        2023-02-06 08:27:14,252 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded, 10 extracted, (127 MB/127 MB)
+        2023-02-06 08:27:14,831 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded, 11 extracted, (127 MB/127 MB)
+        2023-02-06 08:27:15,300 INFO  [doc.0.18]] (docker-java-stream--466503511) Pulling image layers:  0 pending, 12 downloaded, 12 extracted, (127 MB/127 MB)
+        2023-02-06 08:27:15,583 INFO  [doc.0.18]] (docker-java-stream--466503511) Pull complete. 12 layers, pulled in 18s (downloaded 127 MB at 7 MB/s)
+        java.lang.InterruptedException
+            at java.base/java.util.concurrent.locks.AbstractQueuedSynchronizer.acquireInterruptibly(AbstractQueuedSynchronizer.java:1261)
+            at java.base/java.util.concurrent.locks.ReentrantLock.lockInterruptibly(ReentrantLock.java:317)
+            at java.base/java.util.concurrent.LinkedBlockingQueue.take(LinkedBlockingQueue.java:430)
+            at io.quarkus.vertx.http.runtime.logstream.WebSocketLogHandler.recordHistory(WebSocketLogHandler.java:66)
+            at io.quarkus.vertx.http.runtime.logstream.WebSocketLogHandler.doPublish(WebSocketLogHandler.java:39)
+            at org.jboss.logmanager.ExtHandler.publish(ExtHandler.java:66)
+            at org.jboss.logmanager.ExtHandler.publishToNestedHandlers(ExtHandler.java:97)
+            at io.quarkus.bootstrap.logging.QuarkusDelayedHandler.doPublish(QuarkusDelayedHandler.java:81)
+            at org.jboss.logmanager.ExtHandler.publish(ExtHandler.java:66)
+            at org.jboss.logmanager.LoggerNode.publish(LoggerNode.java:327)
+            at org.jboss.logmanager.LoggerNode.publish(LoggerNode.java:334)
+            at org.jboss.logmanager.LoggerNode.publish(LoggerNode.java:334)
+            at org.jboss.logmanager.LoggerNode.publish(LoggerNode.java:334)
+            at org.jboss.logmanager.Logger.logRaw(Logger.java:750)
+            at org.slf4j.impl.Slf4jLogger.log(Slf4jLogger.java:573)
+            at org.slf4j.impl.Slf4jLogger.log(Slf4jLogger.java:565)
+            at org.slf4j.impl.Slf4jLogger.info(Slf4jLogger.java:302)
+            at org.testcontainers.images.LoggedPullImageResultCallback.onComplete(LoggedPullImageResultCallback.java:112)
+            at org.testcontainers.images.TimeLimitedLoggedPullImageResultCallback.onComplete(TimeLimitedLoggedPullImageResultCallback.java:91)
+            at org.testcontainers.shaded.com.github.dockerjava.core.exec.AbstrAsyncDockerCmdExec$1.onComplete(AbstrAsyncDockerCmdExec.java:51)
+            at org.testcontainers.shaded.com.github.dockerjava.core.DefaultInvocationBuilder.lambda$executeAndStream$1(DefaultInvocationBuilder.java:276)
+            at java.base/java.lang.Thread.run(Thread.java:829)
+        2023-02-06 08:27:15,604 INFO  [doc.0.18]] (agroal-11) Creating container for image: mysql:8.0.18
+        2023-02-06 08:27:16,271 INFO  [doc.0.18]] (agroal-11) Container mysql:8.0.18 is starting: 90297c41db843e3300bb6bdee40710aecc8ae29b159e69aaa91541dad89df0f2
+        2023-02-06 08:27:17,420 INFO  [doc.0.18]] (agroal-11) Waiting for database connection to become available at jdbc:mysql://localhost:32779/test using query 'SELECT 1'
+
+    ->go back to cmd then check images pulled by testcontainers
+        C:\Users\MMACARANAS>docker images -a
+        REPOSITORY            TAG                 IMAGE ID            CREATED             SIZE
+        testcontainers/ryuk   0.3.4               7ac27de2f0c4        6 months ago        12MB
+        mysql                 8.0.18              ed1ffcb5eff3        3 years ago         456MB
+
+    ->check also the containers created
+        C:\Users\MMACARANAS>docker ps -a
+        CONTAINER ID        IMAGE                       COMMAND                  CREATED              STATUS              PORTS                                NAMES
+        90297c41db84        mysql:8.0.18                "docker-entrypoint.s…"   About a minute ago   Up About a minute   33060/tcp, 0.0.0.0:32779->3306/tcp   compassionate_mayer
+        ef62c0263ec3        testcontainers/ryuk:0.3.4   "/app"                   About a minute ago   Up About a minute   0.0.0.0:32778->8080/tcp              testcontainers-ryuk-6fd82295-8d86-45bf-8bc5-17ef41917f38
+
+    ->need to wait for:
+        2023-02-06 08:12:56,170 INFO  [doc.0.18]] (agroal-11) Container mysql:8.0.18 is starting: a970767222414918ed384649b5124fdb593e7578ec82a2289000ec2abfbe03b7
+        2023-02-06 08:12:58,215 INFO  [doc.0.18]] (agroal-11) Waiting for database connection to become available at jdbc:mysql://localhost:32773/test using query 'SELECT 1'
+        2023-02-06 08:14:48,260 INFO  [doc.0.18]] (agroal-11) Container is started (JDBC URL: jdbc:mysql://localhost:32773/test)
+        2023-02-06 08:14:48,261 INFO  [doc.0.18]] (agroal-11) Container mysql:8.0.18 started in PT2M0.8718495S
+    
+    ->input r then press enter:
+        Starting test run, 2 tests to run.
+        Running 1/2. Running: #JUnit Jupiter
+        Running 1/2. Running: org.acme.GreetingResourceTest#GreetingResourceTest
+        Running 1/2. Running: org.acme.GreetingResourceTest#testHelloEndpoint()
+        Running 2/2. Running: org.acme.RestAssuredCatalogTest#RestAssuredCatalogTest
+        Running 2/2. Running: org.acme.RestAssuredCatalogTest#test for getCatalogItems
+        2023-02-06 08:15:10,048 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) adding catalog item with sku : SKUNumber-1524
+        2023-02-06 08:15:10,532 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) adding catalog item with sku : SKUNumber-2131
+        2023-02-06 08:15:10,624 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) getting catalog items
+        2023-02-06 08:15:11,953 INFO  [io.qua.test] (Test runner thread) All tests are now passing
+        All 2 tests are passing (0 skipped), 2 tests were run in 9259ms. Tests completed at 08:15:11.
+
+    ->open mysql then check if the data is created 
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+encountered error:
+
+    2023-02-06 08:06:27,824 ERROR [doc.3.4]] (agroal-11) There are no stdout/stderr logs available for the failed container
+    2023-02-06 08:06:27,826 WARN  [io.agr.pool] (agroal-11) Datasource '<default>': Failed to create connection due to ContainerLaunchException
+
+    solution:
+
+    restart docker
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+encountered error:
+    C:\Users\MMACARANAS>docker pull postgresql:14.6
+    Error response from daemon: pull access denied for postgresql, repository does not exist or may require 'docker login'
+
+    C:\Users\MMACARANAS>docker pull postgresql
+    Using default tag: latest
+    Error response from daemon: pull access denied for postgresql, repository does not exist or may require 'docker login'
+
+    solution:
+    need only postgres not postgresql
+    C:\Users\MMACARANAS>docker pull postgres
+    Using default tag: latest
+    latest: Pulling from library/postgres
+    01b5b2efb836: Pull complete
+    56ed68c2d1ab: Pull complete
+    55fb0660d716: Pull complete
+    691efe4a0cee: Pull complete
+    b17aaf88fea7: Pull complete
+    066b94a3cb4e: Pull complete
+    38dfd9b39ed6: Pull complete
+    7bf9a9a9ce8b: Pull complete
+    97007a132edd: Pull complete
+    fe2c24196209: Pull complete
+    0fefa3256f2a: Pull complete
+    c425486621cf: Pull complete
+    59de5ac42e54: Pull complete
+    Digest: sha256:a71ed7f2b88694adc4b227aa33d25fffd73b47d5654338ece083c2070288af5f
+    Status: Downloaded newer image for postgres:latest
+
+    C:\Users\MMACARANAS>docker images -a
+    REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+    postgres            latest              f462f91720c0        29 hours ago        379MB
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+encountered error:
+
+    C:\Users\MMACARANAS>docker run --name dock-post -e POSTGRES_PASSWORD=password -d postgres
+    58fcaf97060d44f46e1ac0e590d398472fde4fa0a965ea8f4840a9ea842c5559
+
+    C:\Users\MMACARANAS>docker ps -a
+    CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                     PORTS               NAMES
+    58fcaf97060d        postgres            "docker-entrypoint.s…"   7 seconds ago       Exited (2) 4 seconds ago                       dock-post
+
+    C:\Users\MMACARANAS>docker start 58f
+    58f
+
+    C:\Users\MMACARANAS>docker ps -a
+    CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS                     PORTS               NAMES
+    58fcaf97060d        postgres            "docker-entrypoint.s…"   23 seconds ago      Exited (2) 2 seconds ago                       dock-post
+
+    run docker and started already but status is still exited
+
+    solution:
+    need to specify the working version as latest version is not working
+
+    C:\Users\MMACARANAS>docker pull postgres:9.6.24
+    9.6.24: Pulling from library/postgres
+    1cb79db8a9e7: Pull complete
+    f6bae7873dd7: Pull complete
+    8f7722dc50a7: Pull complete
+    e8622b8cb6f3: Pull complete
+    d6d74bba3a57: Pull complete
+    874d4d2a09fd: Pull complete
+    2d87c3a4038c: Pull complete
+    f955a6cf127b: Pull complete
+    f62dc55c568d: Pull complete
+    4e2c4902efbd: Pull complete
+    01c676df543a: Pull complete
+    1e3d335ef0b7: Pull complete
+    11087f2b0d87: Pull complete
+    4b9a74ac6ea0: Pull complete
+    Digest: sha256:caddd35b05cdd56c614ab1f674e63be778e0abdf54e71a7507ff3e28d4902698
+    Status: Downloaded newer image for postgres:9.6.24
+
+    C:\Users\MMACARANAS>docker run --name dock-post12 -e POSTGRES_PASSWORD=password -d postgres:9.6.24
+    686ce59b06ee5c34bccb907a926888359d2ac5191da1a3ec32da724d6e8f0589
+
+    C:\Users\MMACARANAS>docker ps -a
+    CONTAINER ID        IMAGE               COMMAND                  CREATED             STATUS              PORTS               NAMES
+    686ce59b06ee        postgres:9.6.24     "docker-entrypoint.s…"   7 seconds ago       Up 5 seconds        5432/tcp            dock-post12
+
+    C:\Users\MMACARANAS>
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+encountered error:
+    C:\Users\MMACARANAS>docker rmi f46
+    Error response from daemon: conflict: unable to delete f462f91720c0 (must be forced) - image is being used by stopped container 58fcaf97060d
+
+    C:\Users\MMACARANAS>
+
+    solution:
+    need to remove container first before we can remove the image
+    C:\Users\MMACARANAS>docker rm 58f
+    58f
+
+    C:\Users\MMACARANAS>docker rmi f46
+    Untagged: postgres:latest
+    Untagged: postgres@sha256:a71ed7f2b88694adc4b227aa33d25fffd73b47d5654338ece083c2070288af5f
+    Deleted: sha256:f462f91720c016965baff4117d03159c23ae62968a7b90e0ff49ad263fd44f9f
+    Deleted: sha256:c68e8b36150cf54cb75f3efc1e12c016e59dae98d0ed463484a6ed8f94c91fa8
+    Deleted: sha256:ead7bd53857df31d456fb9b3a1b5a988ce4ea40f3d6dc306175b1287e13d6e5e
+    Deleted: sha256:8986b1e71ee1bec04a510e1f3567cae274cf39d459eab649035a4aa199e7f146
+    Deleted: sha256:f0fa876113482d5b8de2528a0625cace1f9f08fc34d618c3524059e6d57d078d
+    Deleted: sha256:7f785ef9a3e4cbfc2c7af984eb339a3e370c4cc58899f426c07765a1b14389a7
+    Deleted: sha256:3bd40d8b9da2ee60234601a36603c201c148ec99667389b7e95e140f70b8342c
+    Deleted: sha256:da29bba6c88ed5156657a2586ba199b3f22deb6eaf81b76fddab2987db77c444
+    Deleted: sha256:c43db0f95342d0b5e02f78bb23274bb7569824122afbf80f05c062e64b258bd0
+    Deleted: sha256:18931490eed07aea3308b6e4c6e4e17646f52a34cad118a363e99f308ddc7b15
+    Deleted: sha256:d91605682958d1a6c0db550989741762592c68f43317c257efcdb29b44dde547
+    Deleted: sha256:5d56c994873be83bb932770e74bc2244abfc2c9051da812593fabb1f8855f804
+    Deleted: sha256:798cc469a1b01abfef545c95eb1d7320ce83f8021e0daf4c13c543958fc30466
+    Deleted: sha256:bd2fe8b74db65d82ea10db97368d35b92998d4ea0e7e7dc819481fe4a68f64cf
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+removing images with same image id
+
+    C:\Users\MMACARANAS>docker images -a
+    REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+    postgres            15.1                f462f91720c0        30 hours ago        379MB
+    postgres            latest              f462f91720c0        30 hours ago        379MB
+
+    C:\Users\MMACARANAS>docker rmi postgres:latest
+    Untagged: postgres:latest
+
+    -> docker rmi repository:tag
+    -> check all images
+
+    C:\Users\MMACARANAS>docker images -a
+    REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
+    postgres            15.1                f462f91720c0        30 hours ago        379MB
+--------------------------------------------------------------------------------------------------------------------------------------------------
+--------------------------------------------------------------------------------------------------------------------------------------------------
+login to postgres in docker and create database the logout (\q)
+    C:\Users\MMACARANAS>docker exec -it dock-post12 bash
+    root@686ce59b06ee:/# psql -h localhost -U postgres
+    psql (9.6.24)
+    Type "help" for help.
+
+    postgres=# \l
+                                    List of databases
+    Name    |  Owner   | Encoding |  Collate   |   Ctype    |   Access privileges
+    -----------+----------+----------+------------+------------+-----------------------
+    postgres  | postgres | UTF8     | en_US.utf8 | en_US.utf8 |
+    template0 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
+            |          |          |            |            | postgres=CTc/postgres
+    template1 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
+            |          |          |            |            | postgres=CTc/postgres
+    (3 rows)
+
+    postgres=# create database catalogdb;
+    CREATE DATABASE
+    postgres=# \l
+                                    List of databases
+    Name    |  Owner   | Encoding |  Collate   |   Ctype    |   Access privileges
+    -----------+----------+----------+------------+------------+-----------------------
+    catalogdb | postgres | UTF8     | en_US.utf8 | en_US.utf8 |
+    postgres  | postgres | UTF8     | en_US.utf8 | en_US.utf8 |
+    template0 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
+            |          |          |            |            | postgres=CTc/postgres
+    template1 | postgres | UTF8     | en_US.utf8 | en_US.utf8 | =c/postgres          +
+            |          |          |            |            | postgres=CTc/postgres
+    (4 rows)
+
+    postgres=# \q
+--------------------------------------------------------------------------------------------------------------------------------------------------
+postgres testcontainers
+    run console output:
+    Press [r] to resume testing, [h] for more options>
+    Press [r] to resume testing, [o] Toggle test output, [h] for more options>
+    __  ____  __  _____   ___  __ ____  ______ 
+    --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+    -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+    --\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+    2023-02-06 11:25:07,233 INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.1.Final) started in 7.933s. Listening on: http://localhost:8080
+    2023-02-06 11:25:07,236 INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+    2023-02-06 11:25:07,237 INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [agroal, cdi, config-yaml, hibernate-orm, hibernate-orm-panache, hibernate-validator, jdbc-postgresql, narayana-jta, resteasy, resteasy-jackson, smallrye-context-propagation, smallrye-health, vertx]
+
+    r
+    Starting tests
+    Press [r] to re-run, [h] for more options>
+    Press [r] to re-run, [o] Toggle test output, [h] for more options>
+    Running tests for the first time
+    Press [h] for more options>
+    Press [o] Toggle test output, [h] for more options>
+
+    Starting test run, 2 tests to run.
+    Running 1/2. Running: #JUnit Jupiter
+    Running 1/2. Running: org.acme.GreetingResourceTest#GreetingResourceTest
+    Running 1/2. Running: org.acme.GreetingResourceTest#testHelloEndpoint()
+    Running 2/2. 1 failure so far. Running: org.acme.RestAssuredCatalogTest#RestAssuredCatalogTest
+    Running 2/2. 1 failure so far. Running: org.acme.RestAssuredCatalogTest#test for getCatalogItems
+    Press [r] to re-run, [h] for more options>
+    Press [r] to re-run, [o] Toggle test output, [h] for more options>
+    2023-02-06 11:25:28,791 ERROR [io.qua.test] (Test runner thread) ==================== TEST REPORT #1 ====================
+    2023-02-06 11:25:28,792 ERROR [io.qua.test] (Test runner thread) Test GreetingResourceTest#testHelloEndpoint() failed 
+    : java.lang.RuntimeException: java.lang.RuntimeException: Failed to start quarkus
+        at io.quarkus.test.junit.QuarkusTestExtension.throwBootFailureException(QuarkusTestExtension.java:625)
+        at io.quarkus.test.junit.QuarkusTestExtension.interceptTestClassConstructor(QuarkusTestExtension.java:696)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+        at org.junit.jupiter.api.extension.InvocationInterceptor.interceptTestClassConstructor(InvocationInterceptor.java:73)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:62)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.invokeTestClassConstructor(ClassBasedTestDescriptor.java:363)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.instantiateTestClass(ClassBasedTestDescriptor.java:310)
+        at org.junit.jupiter.engine.descriptor.ClassTestDescriptor.instantiateTestClass(ClassTestDescriptor.java:79)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.instantiateAndPostProcessTestInstance(ClassBasedTestDescriptor.java:286)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$testInstancesProvider$4(ClassBasedTestDescriptor.java:278)
+        at java.base/java.util.Optional.orElseGet(Optional.java:369)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$testInstancesProvider$5(ClassBasedTestDescriptor.java:277)
+        at org.junit.jupiter.engine.execution.TestInstancesProvider.getTestInstances(TestInstancesProvider.java:31)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$prepare$0(TestMethodTestDescriptor.java:105)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.prepare(TestMethodTestDescriptor.java:104)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.prepare(TestMethodTestDescriptor.java:68)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$prepare$2(NodeTestTask.java:123)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.prepare(NodeTestTask.java:123)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:90)
+        at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+        at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+        at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+        at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+        at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+        at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:147)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:127)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:90)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:55)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:102)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:54)
+        at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+        at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:95)
+        at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:91)
+        at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:60)
+        at io.quarkus.deployment.dev.testing.JunitTestRunner$2.run(JunitTestRunner.java:228)
+        at io.quarkus.deployment.dev.testing.ModuleTestRunner$2.run(ModuleTestRunner.java:92)
+        at io.quarkus.deployment.dev.testing.TestSupport.runInternal(TestSupport.java:390)
+        at io.quarkus.deployment.dev.testing.TestSupport$2.run(TestSupport.java:310)
+        at java.base/java.lang.Thread.run(Thread.java:829)
+    Caused by: java.lang.RuntimeException: Failed to start quarkus
+        at io.quarkus.runner.ApplicationImpl.doStart(Unknown Source)
+        at io.quarkus.runtime.Application.start(Application.java:101)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+        at io.quarkus.runner.bootstrap.StartupActionImpl.run(StartupActionImpl.java:253)
+        at io.quarkus.test.junit.QuarkusTestExtension.doJavaStart(QuarkusTestExtension.java:250)
+        at io.quarkus.test.junit.QuarkusTestExtension.ensureStarted(QuarkusTestExtension.java:592)
+        at io.quarkus.test.junit.QuarkusTestExtension.beforeAll(QuarkusTestExtension.java:640)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.lambda$invokeBeforeAllCallbacks$12(ClassBasedTestDescriptor.java:395)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.invokeBeforeAllCallbacks(ClassBasedTestDescriptor.java:395)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.before(ClassBasedTestDescriptor.java:211)
+        at org.junit.jupiter.engine.descriptor.ClassBasedTestDescriptor.before(ClassBasedTestDescriptor.java:84)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:148)
+        ... 35 more
+    Caused by: java.lang.RuntimeException: javax.persistence.PersistenceException: [PersistenceUnit: <default>] Unable to build Hibernate SessionFactory
+        at io.quarkus.hibernate.orm.runtime.JPAConfig.startAll(JPAConfig.java:82)
+        at io.quarkus.hibernate.orm.runtime.HibernateOrmRecorder.startAllPersistenceUnits(HibernateOrmRecorder.java:95)
+        at io.quarkus.deployment.steps.HibernateOrmProcessor$startPersistenceUnits1868654632.deploy_0(Unknown Source)
+        at io.quarkus.deployment.steps.HibernateOrmProcessor$startPersistenceUnits1868654632.deploy(Unknown Source)
+        ... 51 more
+    Caused by: javax.persistence.PersistenceException: [PersistenceUnit: <default>] Unable to build Hibernate SessionFactory
+        at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.persistenceException(FastBootEntityManagerFactoryBuilder.java:116)
+        at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:76)
+        at io.quarkus.hibernate.orm.runtime.FastBootHibernatePersistenceProvider.createEntityManagerFactory(FastBootHibernatePersistenceProvider.java:72)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:80)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:55)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$LazyPersistenceUnit.get(JPAConfig.java:167)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$1.run(JPAConfig.java:68)
+        ... 1 more
+    Caused by: org.hibernate.exception.GenericJDBCException: Unable to open JDBC Connection for DDL execution
+        at org.hibernate.exception.internal.StandardSQLExceptionConverter.convert(StandardSQLExceptionConverter.java:42)
+        at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:113)
+        at org.hibernate.engine.jdbc.spi.SqlExceptionHelper.convert(SqlExceptionHelper.java:99)
+        at org.hibernate.resource.transaction.backend.jta.internal.DdlTransactionIsolatorJtaImpl.<init>(DdlTransactionIsolatorJtaImpl.java:62)
+        at org.hibernate.resource.transaction.backend.jta.internal.JtaTransactionCoordinatorBuilderImpl.buildDdlTransactionIsolator(JtaTransactionCoordinatorBuilderImpl.java:53)
+        at org.hibernate.tool.schema.internal.HibernateSchemaManagementTool.getDdlTransactionIsolator(HibernateSchemaManagementTool.java:205)
+        at org.hibernate.tool.schema.internal.HibernateSchemaManagementTool.buildGenerationTargets(HibernateSchemaManagementTool.java:160)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.doDrop(SchemaDropperImpl.java:112)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.performDatabaseAction(SchemaManagementToolCoordinator.java:157)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.process(SchemaManagementToolCoordinator.java:85)
+        at org.hibernate.internal.SessionFactoryImpl.<init>(SessionFactoryImpl.java:335)
+        at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:74)
+        ... 6 more
+    Caused by: java.sql.SQLException: Acquisition timeout while waiting for new connection
+        at io.agroal.pool.ConnectionPool.handlerFromSharedCache(ConnectionPool.java:320)
+        at io.agroal.pool.ConnectionPool.getConnection(ConnectionPool.java:248)
+        at io.agroal.pool.DataSource.getConnection(DataSource.java:86)
+        at io.quarkus.hibernate.orm.runtime.customized.QuarkusConnectionProvider.getConnection(QuarkusConnectionProvider.java:23)
+        at org.hibernate.engine.jdbc.env.internal.JdbcEnvironmentInitiator$ConnectionProviderJdbcConnectionAccess.obtainConnection(JdbcEnvironmentInitiator.java:181)
+        at org.hibernate.resource.transaction.backend.jta.internal.DdlTransactionIsolatorJtaImpl.<init>(DdlTransactionIsolatorJtaImpl.java:59)
+        ... 14 more
+    Caused by: java.util.concurrent.TimeoutException
+        at java.base/java.util.concurrent.FutureTask.get(FutureTask.java:204)
+        at io.agroal.pool.ConnectionPool.handlerFromSharedCache(ConnectionPool.java:296)
+        ... 19 more
+
+    2023-02-06 11:25:28,804 ERROR [io.qua.test] (Test runner thread) >>>>>>>>>>>>>>>>>>>> Summary: <<<<<<<<<<<<<<<<<<<<
+    GreetingResourceTest#testHelloEndpoint() java.lang.RuntimeException: Failed to start quarkus
+    2023-02-06 11:25:28,811 ERROR [io.qua.test] (Test runner thread) >>>>>>>>>>>>>>>>>>>> 1 TEST FAILED <<<<<<<<<<<<<<<<<<<<
+    1 test failed (0 passing, 1 skipped), 1 test was run in 14290ms. Tests completed at 11:25:28.
+    2023-02-06 11:25:31,496 INFO  [doc.3.4]] (docker-java-stream-257369379) Starting to pull image
+    2023-02-06 11:25:31,498 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  0 downloaded,  0 extracted, (0 bytes/0 bytes)
+    2023-02-06 11:25:33,432 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  2 pending,  1 downloaded,  0 extracted, (317 KB/? MB)
+    2023-02-06 11:25:33,712 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  1 pending,  2 downloaded,  0 extracted, (4 MB/? MB)
+    2023-02-06 11:25:33,740 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  0 extracted, (4 MB/5 MB)
+    2023-02-06 11:25:34,335 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  1 extracted, (5 MB/5 MB)
+    2023-02-06 11:25:35,040 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  2 extracted, (5 MB/5 MB)
+    2023-02-06 11:25:35,680 INFO  [doc.3.4]] (docker-java-stream-257369379) Pulling image layers:  0 pending,  3 downloaded,  3 extracted, (5 MB/5 MB)
+    2023-02-06 11:25:35,926 INFO  [doc.3.4]] (docker-java-stream-257369379) Pull complete. 3 layers, pulled in 4s (downloaded 5 MB at 1 MB/s)
+    2023-02-06 11:25:36,001 INFO  [doc.3.4]] (agroal-11) Creating container for image: testcontainers/ryuk:0.3.4
+    2023-02-06 11:25:36,592 INFO  [doc.3.4]] (agroal-11) Container testcontainers/ryuk:0.3.4 is starting: 5ffaf8bab1786517bdadc0d31ff6c72f3c068675c03a61013ad3d5ecb977cb4c
+    2023-02-06 11:25:38,289 INFO  [doc.3.4]] (agroal-11) Container testcontainers/ryuk:0.3.4 started in PT19.4296153S
+    2023-02-06 11:25:38,319 INFO  [org.tes.uti.RyukResourceReaper] (agroal-11) Ryuk started - will monitor and terminate Testcontainers containers on JVM exit
+    2023-02-06 11:25:38,320 INFO  [org.tes.DockerClientFactory] (agroal-11) Checking the system...
+    2023-02-06 11:25:38,321 INFO  [org.tes.DockerClientFactory] (agroal-11) ?? Docker server version should be at least 1.6.0
+    2023-02-06 11:25:38,322 INFO  [doc.6.24]] (agroal-11) Creating container for image: postgres:9.6.24
+    2023-02-06 11:25:38,931 INFO  [doc.6.24]] (agroal-11) Container postgres:9.6.24 is starting: 874166993ed31c03aa1336b0fed0c32e0cf99dd041cd4b4bcb0bb866fd7c8ee8
+    2023-02-06 11:25:44,324 INFO  [doc.6.24]] (agroal-11) Container postgres:9.6.24 started in PT6.0015492S
+    r
+
+    Starting test run, 2 tests to run.
+    Running 1/2. Running: #JUnit Jupiter
+    Running 1/2. Running: org.acme.GreetingResourceTest#GreetingResourceTest
+    Running 1/2. Running: org.acme.GreetingResourceTest#testHelloEndpoint()
+    Running 2/2. Running: org.acme.RestAssuredCatalogTest#RestAssuredCatalogTest
+    Running 2/2. Running: org.acme.RestAssuredCatalogTest#test for getCatalogItems
+    2023-02-06 11:38:17,100 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) adding catalog item with sku : SKUNumber-6640
+    2023-02-06 11:38:17,509 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) adding catalog item with sku : SKUNumber-8530
+    2023-02-06 11:38:17,533 INFO  [org.acm.con.CatalogItemController] (executor-thread-0) getting catalog items
+    2023-02-06 11:38:18,184 INFO  [io.qua.test] (Test runner thread) All tests are now passing
+    All 2 tests are passing (0 skipped), 2 tests were run in 4098ms. Tests completed at 11:38:18.
+--------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+

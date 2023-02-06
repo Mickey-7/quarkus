@@ -1,0 +1,305 @@
+-------------------------------------------------------------------------------------------------------------
+postgresql
+    https://roytuts.com/how-to-install-postgresql-zip-archive-in-windows/
+    error when extracting after downloading the binaries zip file
+        need to download portable 7-zip  : https://portableapps.com/apps/utilities/7-zip_portable
+        double click the downloaded 7-zip then install - no admin needed then it  will create 7-ZipPortable folder
+        open the 7-ZipPortable folder then double click 7-ZipPortable application
+        navitage to the downloaded postgresql binaries zip file then select and click extract
+
+        under the directory : C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries
+        create a pgsql_data folder - notice that pgsql folder is there (that is the one we extracted)
+    -------------------------------------------------------------------------------------------------------------
+    open cmd then go to its bin folder cd C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin
+        type initdb.exe -D C:\pgsql_data -U postgres -W -E UTF8 -A scram-sha-256
+        -U postgres creates the superuser as postgres, 
+        -W prompts for the password of the superuser, 
+        -E UTF8 creates the database with UTF-8 encoding and 
+        -A scram-sha-256 enables password authentication.
+
+        cmd output after entering above : 
+
+            C:\Users\MMACARANAS>cd C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>initdb.exe -D C:\pgsql_data -U postgres -W -E UTF8 -A scram-sha-256
+            The files belonging to this database system will be owned by user "MMACARANAS".
+            This user must also own the server process.
+
+            The database cluster will be initialized with locale "English_Philippines.1252".
+            The default text search configuration will be set to "english".
+
+            Data page checksums are disabled.
+
+            Enter new superuser password:
+            Enter it again:
+
+            creating directory C:/pgsql_data ... ok
+            creating subdirectories ... ok
+            selecting dynamic shared memory implementation ... windows
+            selecting default max_connections ... 100
+            selecting default shared_buffers ... 128MB
+            selecting default time zone ... Asia/Kuala_Lumpur
+            creating configuration files ... ok
+            running bootstrap script ... ok
+            performing post-bootstrap initialization ... ok
+            syncing data to disk ... ok
+
+            Success. You can now start the database server using:
+
+                pg_ctl -D ^"C^:^\pgsql^_data^" -l logfile start
+
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>
+    -------------------------------------------------------------------------------------------------------------
+    Start and Stop PostgreSQL - navigate first to the bin folder before copying command below
+        To start PostgreSQL, execute the command: pg_ctl.exe -D C:\pgsql_data -l logfile start
+        To shutdown PostgreSQL, execute the command: pg_ctl.exe -D C:\pgsql_data stop
+
+        cmd output : 
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>pg_ctl.exe -D C:\pgsql_data -l logfile start
+            waiting for server to start.... done
+            server started
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>pg_ctl.exe -D C:\pgsql_data stop
+            waiting for server to shut down.... done
+            server stopped
+    -------------------------------------------------------------------------------------------------------------
+    Login to PostgreSQL Server - the server should be started before logging in
+        navigate to bin folder then type command : psql.exe -U postgres
+
+        cmd output :
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>pg_ctl.exe -D C:\pgsql_data -l logfile start
+            waiting for server to start.... done
+            server started
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>psql.exe -U postgres
+            Password for user postgres:
+            psql (15.1)
+            WARNING: Console code page (437) differs from Windows code page (1252)
+                    8-bit characters might not work correctly. See psql reference
+                    page "Notes for Windows users" for details.
+            Type "help" for help.
+
+            postgres=#
+    -------------------------------------------------------------------------------------------------------------
+    Queries or Operations in PostgreSQL
+    -------------------------------------------------------------------------------------------------------------
+    To list all databases use command: \list
+
+        cmd output:  
+            postgres=# \list
+                                                                        List of databases
+            Name    |  Owner   | Encoding |         Collate          |          Ctype           | ICU Locale | Locale Provider |   Access privileges
+            -----------+----------+----------+--------------------------+--------------------------+------------+-----------------+-----------------------
+            postgres  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |  template0 | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                    |          |          |                          |                          |            |                 | postgres=CTc/postgres
+            template1 | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                    |          |          |                          |                          |            |                 | postgres=CTc/postgres
+            (3 rows)
+    -------------------------------------------------------------------------------------------------------------
+    To create a new database, use command: CREATE DATABASE <database name>;
+
+        cmd output:
+            postgres=# create database employeeDB;
+            CREATE DATABASE
+            postgres=# \list
+                                                                        List of databases
+                Name    |  Owner   | Encoding |         Collate          |          Ctype           | ICU Locale | Locale Provider |   Access privileges
+            ------------+----------+----------+--------------------------+--------------------------+------------+-----------------+-----------------------
+            employeedb | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            postgres   | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            template0  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres
+            template1  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres
+            (4 rows)
+    -------------------------------------------------------------------------------------------------------------
+    To switch to a new database, use command \connect <database name>;
+
+        cmd output:
+            postgres=# \connect employeedb
+            You are now connected to database "employeedb" as user "postgres".
+    -------------------------------------------------------------------------------------------------------------
+    To show tables from a database, use the command \dt
+
+        cmd output:
+            employeedb=# CREATE TABLE category (
+            employeedb(#   id serial PRIMARY KEY,
+            employeedb(#   name varchar(50) NOT NULL
+            employeedb(# );
+            CREATE TABLE
+            employeedb=# \dt
+            List of relations
+            Schema |   Name   | Type  |  Owner
+            --------+----------+-------+----------
+            public | category | table | postgres
+            (1 row)
+    -------------------------------------------------------------------------------------------------------------
+    To take backup or database dump, use the following command: - make sure bin is the current directory
+        pg_dump.exe -U postgres -d roytuts -f <path where backup will be stored>\backup.sql
+        Where, -U followed by database username, 
+        -d followed by database name, 
+        -f followed by full path with .sql or .pgsql file name.
+
+        cmd output:
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>pg_dump.exe -U postgres -d employeedb -f C:\Users\MMACARANAS\Downloads\backup.sql
+            Password:
+
+        and backup.sql will be created on the Downloads directory 
+        Note : when importing, make sure that the database is created first       
+    -------------------------------------------------------------------------------------------------------------
+    To drop database: drop database <database_name>;
+    
+        cmd output:
+            postgres=# drop database employeedb;
+            DROP DATABASE
+            postgres=#
+    -------------------------------------------------------------------------------------------------------------        
+    To drop table: drop table <table_name>; - connect first to the database before deleting table
+    
+        cmd output:
+            postgres=# drop table category;
+            DROP TABLE
+            postgres=#
+    -------------------------------------------------------------------------------------------------------------
+    To import existing .pgsql or .sql file into database server, use the following command:
+        Note : make sure that the database is created first before importing
+            psql.exe -h ec2-75-101-212-64.compute-1.amazonaws.com -U ilfndedxuwxhxu d8lhnd1pla9162 < <directory path>\backup.sql
+            Where, -h followed by host name (I used here Heroku cloud), 
+            -U followed by database username, 
+            followed by database name and backup file name. 
+            You can also use -p followed by port if you are not using default port 5431.
+
+        cmd output:
+            postgres=# create database employeedb;
+            CREATE DATABASE
+            postgres=# \l
+                                                                        List of databases
+                Name    |  Owner   | Encoding |         Collate          |          Ctype           | ICU Locale | Locale Provider |   Access privileges  
+            ------------+----------+----------+--------------------------+--------------------------+------------+-----------------+-----------------------
+            employeedb | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            postgres   | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            template0  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres template1  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres(4 rows)
+
+
+            postgres=#
+            postgres=# \c employeedb
+            You are now connected to database "employeedb" as user "postgres".
+            employeedb=# \dt
+            Did not find any relations.
+            employeedb=# exit
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>psql.exe -h localhost -U postgres employeedb < C:\Users\MMACARANAS\Downloads\backup.sql
+            Password for user postgres:
+            SET
+            SET
+            SET
+            SET
+            SET
+            set_config
+            ------------
+
+            (1 row)
+
+            SET
+            SET
+            SET
+            SET
+            SET
+            SET
+            CREATE TABLE
+            ALTER TABLE
+            CREATE SEQUENCE
+            ALTER TABLE
+            ALTER SEQUENCE
+            ALTER TABLE
+            COPY 0
+            setval
+            --------
+                1
+            (1 row)
+
+            ALTER TABLE
+
+            C:\Users\MMACARANAS\Downloads\postgresql-15.1-1-windows-x64-binaries\pgsql\bin>psql.exe -U postgres
+            Password for user postgres:
+            psql (15.1)
+            WARNING: Console code page (437) differs from Windows code page (1252)
+                    8-bit characters might not work correctly. See psql reference
+                    page "Notes for Windows users" for details.
+            Type "help" for help.
+
+            postgres=# \l
+                                                                        List of databases
+                Name    |  Owner   | Encoding |         Collate          |          Ctype           | ICU Locale | Locale Provider |   Access privileges  
+            ------------+----------+----------+--------------------------+--------------------------+------------+-----------------+-----------------------
+            employeedb | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            postgres   | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            |
+            template0  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres template1  | postgres | UTF8     | English_Philippines.1252 | English_Philippines.1252 |            | libc            | =c/postgres          +
+                        |          |          |                          |                          |            |                 | postgres=CTc/postgres(4 rows)
+
+
+            postgres=# \c employeedb;
+            You are now connected to database "employeedb" as user "postgres".
+            employeedb=# \dt
+                    List of relations
+            Schema |   Name   | Type  |  Owner
+            --------+----------+-------+----------
+            public | category | table | postgres
+            (1 row)
+
+
+            employeedb=#
+-------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------
+MySQL 
+    https://learncodinghub.com/how-to-install-mysql-on-windows-without-admin-rights/
+    note : open another cmd for step 5 cause step 4 means server is already running
+
+    Start MySQL Server:
+    go to mysql bin directory
+    -> cd C:\Users\MMACARANAS\Downloads\mysql-8.0.32-winx64\mysql-8.0.32-winx64\bin
+    then type : mysqld - will not return cursor back and it means server is running.
+
+    Login to MySQL Server:
+    so open another cmd then go to bin directory again and type :
+    -> mysql -u root
+
+    C:\Users\MMACARANAS\Downloads\mysql-8.0.32-winx64\mysql-8.0.32-winx64\bin>mysql -u root
+    Welcome to the MySQL monitor.  Commands end with ; or \g.
+    Your MySQL connection id is 8
+    Server version: 8.0.32 MySQL Community Server - GPL
+
+    Copyright (c) 2000, 2023, Oracle and/or its affiliates.
+
+    Oracle is a registered trademark of Oracle Corporation and/or its
+    affiliates. Other names may be trademarks of their respective
+    owners.
+
+    Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+    mysql> show databases;
+    +--------------------+
+    | Database           |
+    +--------------------+
+    | information_schema |
+    | mysql              |
+    | performance_schema |
+    | sys                |
+    +--------------------+
+    4 rows in set (0.11 sec)
+
+    mysql>
+-------------------------------------------------------------------------------------------------------------
+
+-------------------------------------------------------------------------------------------------------------
+IntelliJ & Visual Studio Code
+    dowload the zip, extract then run the app
+    IntelliJ : bin/idea64
+    Visual Studio Code : Code
+-------------------------------------------------------------------------------------------------------------
+

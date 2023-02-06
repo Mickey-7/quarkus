@@ -1,0 +1,63 @@
+quarkus:
+  # datasource config
+  datasource:
+    db-kind: postgresql
+    username: postgres
+    password: password
+    jdbc:
+      driver: org.postgresql.Driver
+      url : jdbc:postgresql://localhost:5432/catalogdb
+
+  # hibernate orm config
+  hibernate-orm:
+    database:
+      generation: drop-and-create
+
+#test config
+"%test":
+  quarkus:
+    # datasource config
+    datasource:
+      db-kind: postgresql
+      jdbc:
+        driver: org.testcontainers.jdbc.ContainerDatabaseDriver
+        url: jdbc:tc:postgresql:9.6.24:///catalogdb
+
+    hibernate-orm:
+      dialect: org.hibernate.dialect.PostgreSQL9Dialect
+    database:
+      generation: drop-and-create
+
+
+
+##datasource config
+#quarkus:
+#  datasource:
+#    db-kind: mysql
+#    username: root
+#    password: password
+#    jdbc:
+#      url: jdbc:mysql://localhost:3306/catalogdb
+#      driver: com.mysql.cj.jdbc.Driver
+#
+##hibernate orm config
+#  hibernate-orm:
+#    database:
+#      generation: drop-and-create
+##quarkus.hibernate-orm.log.sql=true
+
+##test config
+#"%test":
+#  quarkus:
+#    datasource:
+#      db-kind: mysql
+#      jdbc:
+#        driver: org.testcontainers.jdbc.ContainerDatabaseDriver
+#        url: jdbc:tc:mysql:8.0.18:///catalogdb
+#
+#
+##test - hibernate orm config
+#    hibernate-orm:
+#      dialect: org.hibernate.dialect.MySQL8Dialect
+#    database:
+#      generation: drop-and-create
