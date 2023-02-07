@@ -1,0 +1,215 @@
+reference:
+    https://levelup.gitconnected.com/running-kafka-on-docker-container-1a15b8d0b77c
+    https://www.section.io/engineering-education/what-is-kafka-how-to-build-and-dockerize-a-kafka-cluster/
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+-> docker & docker compose version
+    open cmd then type:
+    
+    ->docker --version 
+    C:\Users\MMACARANAS>docker --version
+    Docker version 18.06.1-ce, build e68fc7a
+    
+    ->docker compose --version
+    C:\Users\MMACARANAS>docker compose --version
+    Docker version 18.06.1-ce, build e68fc7a
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->create docker-compose.yml
+    version: '3'
+    services:
+        zookeeper:
+            image: wurstmeister/zookeeper
+            container_name: dockerize-zookeeper
+            ports:
+                - "2181:2181"
+        kafka:
+            image: wurstmeister/kafka
+            container_name: dockerize-kafka
+            ports:
+                - "9092:9092"
+            environment:
+                KAFKA_ADVERTISED_HOST_NAME: localhost
+                KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+-> start up docker-compose - open terminal then go to directory of the docker-compose.yml file
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker-compose -f docker-compose.yml up -d
+    Creating network "dockerize-kafka_default" with the default driver
+    Pulling zookeeper (wurstmeister/zookeeper:)...
+    latest: Pulling from wurstmeister/zookeeper
+    a3ed95caeb02: Pulling fs layer
+    ef38b711a50f: Pulling fs layer
+    e057c74597c7: Pulling fs layer
+    666c214f6385: Pulling fs layer
+    c3d6a96f1ffc: Pulling fs layer
+    3fe26a83e0ca: Pull complete
+    3d3a7dd3a3b1: Pull complete
+    f8cc938abe5f: Pull complete
+    9978b75f7a58: Pull complete
+    4d4dbcc8f8cc: Pull complete
+    8b130a9baa49: Pull complete
+    6b9611650a73: Pull complete
+    5df5aac51927: Pull complete
+    76eea4448d9b: Pull complete
+    8b66990876c6: Pull complete
+    f0dd38204b6f: Pull complete
+    Digest: sha256:7a7fd44a72104bfbd24a77844bad5fabc86485b036f988ea927d1780782a6680
+    Status: Downloaded newer image for wurstmeister/zookeeper:latest
+    Pulling kafka (wurstmeister/kafka:)...
+    latest: Pulling from wurstmeister/kafka
+    42c077c10790: Pull complete
+    44b062e78fd7: Pull complete
+    b3ba9647f279: Pull complete
+    10c9a58bd495: Pull complete
+    ed9bd501c190: Pull complete
+    03346d650161: Pull complete
+    539ec416bc55: Pull complete
+    Digest: sha256:2d4bbf9cc83d9854d36582987da5f939fb9255fb128d18e3cf2c6ad825a32751
+    Status: Downloaded newer image for wurstmeister/kafka:latest
+    Creating dockerize-zookeeper ... done
+    Creating dockerize-kafka     ... done
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka>
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+-> check the created images and containers
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker images -a
+    REPOSITORY               TAG                 IMAGE ID            CREATED             SIZE
+    wurstmeister/kafka       latest              a692873757c0        8 months ago        468MB
+    wurstmeister/zookeeper   latest              3f43f72cb283        4 years ago         510MB
+
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker ps -a
+    CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                                                 NAMES
+    49096b6d739b        wurstmeister/zookeeper   "/bin/sh -c '/usr/sb…"   4 minutes ago       Up 4 minutes        22/tcp, 2888/tcp, 3888/tcp, 0.0.0.0:2181->2181/tcp   dockerize-zookeeper
+    2647344961d1        wurstmeister/kafka       "start-kafka.sh"         4 minutes ago       Up 4 minutes        0.0.0.0:9092->9092/tcp                               dockerize-kafka
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka>
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->log in to kafka container:
+    ->docker exec -it <kafka_container_id_first_3_char> sh
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker exec -it 264 sh
+    # 
+
+    Now we are inside our Docker container. 
+    We will move to the folder where all the executives are located.
+    ->cd /opt/kafka/bin
+
+    # cd /opt
+    # cd /kafka
+    # cd /bin
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+-> create topic and check the topics
+    # kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 
+    --topic quickstart
+    Created topic quickstart.
+    # 
+
+    Once you have executed the above command, the name of the topic should be returned. 
+    To check your topics, run:
+
+    # kafka-topics.sh --list --zookeeper zookeeper:2181
+    quickstart
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->create a producer - open another cmd the type below
+    C:\Users\MMACARANAS>docker ps -a
+    CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                                                NAMES
+    49096b6d739b        wurstmeister/zookeeper   "/bin/sh -c '/usr/sb…"   28 minutes ago      Up 28 minutes       22/tcp, 2888/tcp, 3888/tcp, 0.0.0.0:2181->2181/tcp   dockerize-zookeeper
+    2647344961d1        wurstmeister/kafka       "start-kafka.sh"         28 minutes ago      Up 28 minutes       0.0.0.0:9092->9092/tcp                               dockerize-kafka
+
+    C:\Users\MMACARANAS>docker exec -it 264 sh
+    # cd /opt/kafka/bin
+    # kafka-console-producer.sh --topic quickstart --bootstrap-server localhost:9092
+    >
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->create a consumer - open another cmd then type below
+    C:\Users\MMACARANAS>docker ps -a
+    CONTAINER ID        IMAGE                    COMMAND                  CREATED             STATUS              PORTS                                                NAMES
+    49096b6d739b        wurstmeister/zookeeper   "/bin/sh -c '/usr/sb…"   31 minutes ago      Up 31 minutes       22/tcp, 2888/tcp, 3888/tcp, 0.0.0.0:2181->2181/tcp   dockerize-zookeeper
+    2647344961d1        wurstmeister/kafka       "start-kafka.sh"         31 minutes ago      Up 31 minutes       0.0.0.0:9092->9092/tcp                               dockerize-kafka
+
+    C:\Users\MMACARANAS>docker exec -it 264 sh
+    # cd /opt/kafka/bin
+    # kafka-console-consumer.sh --topic quickstart --from-beginning --bootstrap-server localhost:9092
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->check by sending messages: 
+    producer cmd
+    C:\Users\MMACARANAS>docker exec -it 264 sh
+    # cd /opt/kafka/bin
+    # kafka-console-producer.sh --topic quickstart --bootstrap-server localhost:9092
+    >this is dockerize kafka
+    >
+
+    consumer cmd
+    C:\Users\MMACARANAS>docker exec -it 264 sh
+    # cd /opt/kafka/bin
+    # kafka-console-consumer.sh --topic quickstart --from-beginning --bootstrap-server localhost:9092
+    this is dockerize kafka
+----------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------
+->delete kafka topic and exit
+    https://www.conduktor.io/kafka/kafka-topics-cli-tutorial
+    ->kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic kafka_topic_name
+
+    # kafka-topics.sh --list --zookeeper zookeeper:2181
+    __consumer_offsets
+    # 
+
+    to exit type exit
+----------------------------------------------------------------------------------------------------------------------
+
+
+
+-------------------------------------------------------------------------------------------------------------
+error encountered:
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker-compose -f docker-compose.yml up -d
+    ERROR: yaml.parser.ParserError: while parsing a block mapping
+        in ".\docker-compose.yml", line 1, column 1
+    expected <block end>, but found '<block mapping start>'
+        in ".\docker-compose.yml", line 2, column 3
+
+    solution:
+        ->from 
+        version: '3'
+            services:
+        ->to
+        version: '3'
+        services:
+-------------------------------------------------------------------------------------------------------------
+error enconutered:
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka> docker-compose -f docker-compose.yml up -d
+    ERROR: The Compose file '.\docker-compose.yml' is invalid because:
+    services.zookeeper.ports contains an invalid type, it should be an array
+    services.kafka.ports contains an invalid type, it should be an array
+    PS C:\Users\MMACARANAS\documents\projects\dockerize-kafka>
+
+    solution:
+    ->from 
+    zookeeper:
+      image: wurstmeister/zookeeper
+      container_name: dockerize-zookeeper
+      ports:
+        -"2181:2181"
+    kafka:
+      image: wurstmeister/kafka
+      container_name: dockerize-kafka
+      ports:
+        -"9092:9092"
+
+    ->to
+    zookeeper:
+      image: wurstmeister/zookeeper
+      container_name: dockerize-zookeeper
+      ports:
+        - "2181:2181"
+    kafka:
+      image: wurstmeister/kafka
+      container_name: dockerize-kafka
+      ports:
+        - "9092:9092"
+
+    notice the space between - and " on ports
+-------------------------------------------------------------------------------------------------------------

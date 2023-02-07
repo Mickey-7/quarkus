@@ -1,0 +1,270 @@
+------------------------------------------------------------------------------------------------------------------------------
+reference: 
+    https://quarkus.io/blog/getting-started-kafka/
+    https://github.com/cescoffier/getting-started-quarkus-kafka
+------------------------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------------------------
+-> dependencies:
+    SmallRye Reactive Messaging - Kafka Connector
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-reactive-messaging-kafka</artifactId>
+    </dependency>
+
+    RESTEasy Classic Jackson
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jackson</artifactId>
+    </dependency>
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> application.properties
+    #kafka broker location (defaults to localhost:9092)
+    kafka.bootstrap.servers=localhost:9092
+
+    #configure the incoming channel (reading from kafka)
+    mp.messaging.incoming.movies-in.connector=smallrye-kafka
+    mp.messaging.incoming.movies-in.topic=movies
+    mp.messaging.incoming.movies-in.key.deserializer=org.apache.kafka.common.serialization.IntegerDeserializer
+    mp.messaging.incoming.movies-in.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+
+    #configuring the outgoing channel (writing to kafka)
+    mp.messaging.outgoing.movies-out.connectors=smallrye-kafka
+    mp.messaging.outgoing.movies-out.topic=movies
+    mp.messaging.outgoing.movies-out.key.serializer=org.apache.kafka.common.serialization.IntegerSerializer
+    mp.messaging.outgoing.movies-out.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+------------------------------------------------------------------------------------------------------------------------------
+-> model/Movies
+    public class Movie {
+        public String title;
+        public int year;
+    }
+------------------------------------------------------------------------------------------------------------------------------
+-> events/MovieProducer
+    import io.smallrye.reactive.messaging.kafka.Record;
+    import org.acme.model.Movie;
+    import org.eclipse.microprofile.reactive.messaging.Channel;
+    import org.eclipse.microprofile.reactive.messaging.Emitter;
+
+    import javax.enterprise.context.ApplicationScoped;
+    import javax.inject.Inject;
+
+    @ApplicationScoped
+    public class MovieProducer {
+        @Inject
+        @Channel("movies-out")
+        Emitter<Record<Integer,String>> emitter;
+
+        public void sendMovieToKafka(Movie movie){
+            emitter.send(Record.of(movie.year, movie.title));
+        }
+    }
+------------------------------------------------------------------------------------------------------------------------------
+-> events/MovieConsumer
+    import io.smallrye.reactive.messaging.kafka.Record;
+    import org.eclipse.microprofile.reactive.messaging.Incoming;
+    import org.slf4j.Logger;
+    import org.slf4j.LoggerFactory;
+
+    import javax.enterprise.context.ApplicationScoped;
+
+    @ApplicationScoped
+    public class MovieConsumer {
+        private final Logger logger = LoggerFactory.getLogger(MovieConsumer.class);
+
+        @Incoming("movies-in")
+        public void receive(Record<Integer,String> record){
+            logger.info(String.format("got a movie: %d - %s",record.key(), record.value()));
+        }
+    }
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> controller/MovieResource
+    import org.acme.events.MovieProducer;
+    import org.acme.model.Movie;
+
+    import javax.inject.Inject;
+    import javax.ws.rs.Consumes;
+    import javax.ws.rs.POST;
+    import javax.ws.rs.Path;
+    import javax.ws.rs.Produces;
+    import javax.ws.rs.core.MediaType;
+    import javax.ws.rs.core.Response;
+
+    @Path("/")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public class MovieResource {
+
+        @Inject
+        MovieProducer producer;
+        @POST
+        public Response send(Movie movie){
+            producer.sendMovieToKafka(movie);
+            // Return an 202 - Accepted response.
+                 return Response.accepted().entity(movie.title).build();
+        }
+
+    }
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> kafka broker setup - make sure docker is already started and running
+    create docker-compose.yml with script below:
+
+    version: '3'
+    services:
+        zookeeper:
+            image: wurstmeister/zookeeper
+            container_name: dockerize-zookeeper
+            ports:
+                - "2181:2181"
+        
+        kafka:
+            image: wurstmeister/kafka
+            container_name: dockerize-kafka
+            ports:
+                - "9092:9092"
+            environment:
+                KAFKA_ADVERTISED_HOST_NAME: localhost
+                KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> run kafka docker 
+    open cmd
+    go to the directory of the docker-compose.yml
+    execute : docker-compose up -d
+    
+    cmd output:
+    PS C:\Users\MMACARANAS> cd C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker
+    PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> docker-compose up -d
+    Pulling zookeeper (wurstmeister/zookeeper:)...
+    latest: Pulling from wurstmeister/zookeeper
+    a3ed95caeb02: Pull complete
+    ef38b711a50f: Pull complete
+    e057c74597c7: Pull complete
+    666c214f6385: Pull complete
+    c3d6a96f1ffc: Pull complete
+    3fe26a83e0ca: Pull complete
+    3d3a7dd3a3b1: Pull complete
+    f8cc938abe5f: Pull complete
+    9978b75f7a58: Pull complete
+    4d4dbcc8f8cc: Pull complete
+    8b130a9baa49: Pull complete
+    6b9611650a73: Pull complete
+    5df5aac51927: Pull complete
+    76eea4448d9b: Pull complete
+    8b66990876c6: Pull complete
+    f0dd38204b6f: Pull complete
+    Digest: sha256:7a7fd44a72104bfbd24a77844bad5fabc86485b036f988ea927d1780782a6680
+    Status: Downloaded newer image for wurstmeister/zookeeper:latest
+    Pulling kafka (wurstmeister/kafka:)...
+    latest: Pulling from wurstmeister/kafka
+    42c077c10790: Pull complete
+    44b062e78fd7: Pull complete
+    b3ba9647f279: Pull complete
+    10c9a58bd495: Pull complete
+    ed9bd501c190: Pull complete
+    03346d650161: Pull complete
+    539ec416bc55: Pull complete
+    Digest: sha256:2d4bbf9cc83d9854d36582987da5f939fb9255fb128d18e3cf2c6ad825a32751
+    Status: Downloaded newer image for wurstmeister/kafka:latest
+    Creating dockerize-zookeeper ... done
+    Creating dockerize-kafka     ... done
+    PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> 
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> kafka container - check if up already
+    PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> docker ps -a
+    CONTAINER ID        IMAGE                    COMMAND                  CREATED              STATUS              PORTS                                                NAMES
+    6c88491bd842        wurstmeister/zookeeper   "/bin/sh -c '/usr/sb…"   About a minute ago   Up About a minute   22/tcp, 2888/tcp, 3888/tcp, 0.0.0.0:2181->2181/tcp   dockerize-zookeeper
+    b92b63b72410        wurstmeister/kafka       "start-kafka.sh"         About a minute ago   Up About a minute   0.0.0.0:9092->9092/tcp                               dockerize-kafka
+    PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> 
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> kafka topic - login and create kafka topic based on the topic declared on application.properties
+    ->login
+        PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> docker exec -it b92 bash
+        root@b92b63b72410:/#
+    ->get topics list then create topic and check topic list again 
+        PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> docker exec -it b92 bash
+        root@b92b63b72410:/# kafka-topics.sh --list --zookeeper zookeeper:2181
+        root@b92b63b72410:/# kafka-topics.sh --create --zookeeper zookeeper:2181 --replication-factor 1 --partitions 1 --topic movies
+        Created topic movies.
+        root@b92b63b72410:/# kafka-topics.sh --list --zookeeper zookeeper:2181
+        movies
+        root@b92b63b72410:/# 
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> run quarkus  
+    -> Edit Configuration
+    -> Run = quarkus:dev
+    -> Apply
+    -> Run
+
+    run console output:
+    [INFO] Scanning for projects...
+    [INFO] 
+    [INFO] ---------------------< org.acme:code-with-quarkus >---------------------
+    [INFO] Building code-with-quarkus 1.0.0-SNAPSHOT
+    [INFO] --------------------------------[ jar ]---------------------------------
+    [INFO] 
+    [INFO] --- quarkus-maven-plugin:2.16.1.Final:dev (default-cli) @ code-with-quarkus ---
+    [INFO] Invoking org.apache.maven.plugins:maven-resources-plugin:2.6:resources @ code-with-quarkus
+    [INFO] Using 'UTF-8' encoding to copy filtered resources.
+    [INFO] Copying 1 resource
+    [INFO] Invoking io.quarkus.platform:quarkus-maven-plugin:2.16.1.Final:generate-code @ code-with-quarkus
+    [INFO] Invoking org.apache.maven.plugins:maven-compiler-plugin:3.10.1:compile @ code-with-quarkus
+    [INFO] Changes detected - recompiling the module!
+    [INFO] Compiling 4 source files to C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker\target\classes
+    [INFO] Invoking org.apache.maven.plugins:maven-resources-plugin:2.6:testResources @ code-with-quarkus
+    [INFO] Using 'UTF-8' encoding to copy filtered resources.
+    [INFO] skip non existing resourceDirectory C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker\src\test\resources
+    [INFO] Invoking io.quarkus.platform:quarkus-maven-plugin:2.16.1.Final:generate-code-tests @ code-with-quarkus
+    [INFO] Invoking org.apache.maven.plugins:maven-compiler-plugin:3.10.1:testCompile @ code-with-quarkus
+    [INFO] No sources to compile
+    Listening for transport dt_socket at address: 5005
+    Press [h] for more options>
+    Tests paused
+    Press [r] to resume testing, [h] for more options>
+    Press [r] to resume testing, [o] Toggle test output, [h] for more options>
+    2023-02-07 13:54:34,945 INFO  [io.qua.sma.dep.processor] (build-57) Configuring the channel 'movies-out' to be managed by the connector 'smallrye-kafka'
+    __  ____  __  _____   ___  __ ____  ______ 
+    --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+    -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+    --\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+    2023-02-07 13:54:36,696 INFO  [io.sma.rea.mes.kafka] (Quarkus Main Thread) SRMSG18229: Configured topics for channel 'movies-in': [movies]
+    2023-02-07 13:54:36,867 WARN  [org.apa.kaf.cli.pro.ProducerConfig] (smallrye-kafka-producer-thread-0) These configurations '[connectors]' were supplied but are not used yet.
+    2023-02-07 13:54:36,869 INFO  [io.sma.rea.mes.kafka] (smallrye-kafka-producer-thread-0) SRMSG18258: Kafka producer kafka-producer-movies-out, connected to Kafka brokers 'localhost:9092', is configured to write records to 'movies'
+    2023-02-07 13:54:36,909 INFO  [io.sma.rea.mes.kafka] (smallrye-kafka-consumer-thread-0) SRMSG18257: Kafka consumer kafka-consumer-movies-in, connected to Kafka brokers 'localhost:9092', belongs to the 'code-with-quarkus' consumer group and is configured to poll records from [movies]
+    2023-02-07 13:54:37,224 INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.1.Final) started in 3.764s. Listening on: http://localhost:8080
+    2023-02-07 13:54:37,225 INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+    2023-02-07 13:54:37,225 INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [cdi, kafka-client, resteasy, resteasy-jackson, smallrye-context-propagation, smallrye-reactive-messaging, smallrye-reactive-messaging-kafka, vertx]
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> postman
+    POST localhost:8080 SEND
+    request body:
+        {
+            "title":"The Shawshank Redemption",
+            "year":1994
+        }
+
+    response status: 202Accepted
+    response body:
+        The Shawshank Redemption
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> run console output:
+        2023-02-07 13:59:00,099 INFO  [io.sma.rea.mes.kafka] (vert.x-eventloop-thread-3) SRMSG18256: Initialize record store for topic-partition 'movies-0' at position -1.
+        2023-02-07 13:59:00,107 INFO  [org.acm.eve.MovieConsumer] (vert.x-eventloop-thread-3) got a movie: 1994 - The Shawshank Redemption
+------------------------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------------------------
+-> delete kafka topic then quit - make sure to stop the quarkus first before we can delete kafka topic
+    root@b92b63b72410:/# kafka-topics.sh --bootstrap-server localhost:9092 --delete --topic movies
+    root@b92b63b72410:/# kafka-topics.sh --list --zookeeper zookeeper:2181
+    __consumer_offsets
+    root@b92b63b72410:/# exit
+    exit
+    PS C:\Users\MMACARANAS\Documents\projects\quarkus-kafka-docker> 
+------------------------------------------------------------------------------------------------------------------------------
