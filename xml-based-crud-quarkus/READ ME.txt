@@ -1,0 +1,134 @@
+reference: https://stackoverflow.com/questions/64064734/xml-based-rest-service-in-quarkus
+
+-------------------------------------------------------------------------------------------------------------------
+-> org/acme/Fruit
+    import javax.xml.bind.annotation.XmlRootElement;
+
+    @XmlRootElement
+    public class Fruit {
+
+        public Fruit() {
+        }
+
+        public Fruit(String name, String description) {
+            this.name = name;
+            this.description = description;
+        }
+
+        public String name;
+
+        public String description;
+    }
+-------------------------------------------------------------------------------------------------------------------
+-> org/acme/FruitResource
+    import javax.ws.rs.*;
+    import javax.ws.rs.core.MediaType;
+    import java.util.ArrayList;
+    import java.util.List;
+
+    @Path("/fruits")
+    @Produces(MediaType.APPLICATION_XML)
+    @Consumes(MediaType.APPLICATION_XML)
+    public class FruitResource {
+        private final List<Fruit> fruitList = new ArrayList<>();
+        @GET
+        public List<Fruit> getFruit() {
+            fruitList.add(new Fruit("Apple", "Crunchy fruit"));
+            fruitList.add(new Fruit("Kiwi", "Delicious fruit"));
+
+            return fruitList;
+        }
+
+        @POST
+        public List<Fruit> addFruit(Fruit fruit){
+            fruitList.add(fruit);
+            return fruitList;
+        }
+    }
+-------------------------------------------------------------------------------------------------------------------
+
+-> Postman
+-------------------------------------------------------------------------------------------------------------------
+-> GET localhost:8080/fruits SEND
+    response body:
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <collection>
+        <fruit>
+            <name>Apple</name>
+            <description>Crunchy fruit</description>
+        </fruit>
+        <fruit>
+            <name>Kiwi</name>
+            <description>Delicious fruit</description>
+        </fruit>
+        <fruit>
+            <name>post</name>
+            <description>malone</description>
+        </fruit>
+        <fruit>
+            <name>Apple</name>
+            <description>Crunchy fruit</description>
+        </fruit>
+        <fruit>
+            <name>Kiwi</name>
+            <description>Delicious fruit</description>
+        </fruit>
+    </collection>
+-------------------------------------------------------------------------------------------------------------------
+-> POST localhost:8080/fruits SEND
+
+    -------------------------------------------------------------------------------------------------------------------
+    use json to xml converter -> https://www.convertjson.com/json-to-xml.htm
+
+    json data :
+	{
+    		"name":"post",
+    		"description":"malone"
+	}
+
+    xml output:
+	<?xml version="1.0" encoding="UTF-8" ?>
+	<root>
+  		<name>post</name>
+  		<description>malone</description>
+	</root>
+
+    copy then change the root to fruit
+    -------------------------------------------------------------------------------------------------------------------
+
+    request body:
+    <?xml version="1.0" encoding="UTF-8" ?>
+    <fruit>
+        <name>post</name>
+        <description>malone</description>
+    </fruit>
+
+    response body:
+    <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <collection>
+        <fruit>
+            <name>Apple</name>
+            <description>Crunchy fruit</description>
+        </fruit>
+        <fruit>
+            <name>Kiwi</name>
+            <description>Delicious fruit</description>
+        </fruit>
+        <fruit>
+            <name>post</name>
+            <description>malone</description>
+        </fruit>
+        <fruit>
+            <name>Apple</name>
+            <description>Crunchy fruit</description>
+        </fruit>
+        <fruit>
+            <name>Kiwi</name>
+            <description>Delicious fruit</description>
+        </fruit>
+        <fruit>
+            <name>post</name>
+            <description>malone</description>
+        </fruit>
+    </collection>
+-------------------------------------------------------------------------------------------------------------------

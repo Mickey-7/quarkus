@@ -1,0 +1,658 @@
+
+------------------------------------------------------------------------------------------------------------
+reference : 
+    https://www.infoq.com/articles/testing-quarkus-integration/
+    https://github.com/lordofthejars/registration-test-part-1
+------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------
+-> dependencies :
+    Mailer
+    RESTEasy Classic
+    Hibernate ORM with Panache
+    JDBC Driver - H2
+
+    <!-- needed for POST method so that parameter : UserModel can be read -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jsonb</artifactId>
+    </dependency>
+
+    <!-- use on test for assertThat method-->
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>3.17.2</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- needed for test on @InjectMock -->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-junit5-mockito</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- needed for test on given() -->
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!--//need to add dependency : quarkus-smallrye-openapi for test to pass-->
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-openapi</artifactId>
+    </dependency>
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+-> application.properties
+    #datasource config
+    quarkus.datasource.db-kind=h2
+    quarkus.datasource.username=sa
+    quarkus.datasource.password=
+    quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb
+    quarkus.hibernate-orm.database.generation=drop-and-create
+    quarkus.hibernate-orm.dialect=org.hibernate.dialect.H2Dialect
+
+    #test config
+    %test.quarkus.datasource.db-kind=h2
+    %test.quarkus.datasource.username=sa
+    %test.quarkus.datasource.password=
+    %test.quarkus.datasource.jdbc.url=jdbc:h2:mem:testdb;
+    %test.quarkus.hibernate-orm.database.generation=update
+    %test.quarkus.http.host=localhost
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+-> model/UserModel
+    import io.quarkus.hibernate.orm.panache.PanacheEntity;
+
+    import javax.persistence.*;
+    import java.util.Optional;
+
+    @Entity
+    public class UserModel extends PanacheEntity
+    {
+
+        @Column(name = "username")
+        private String username;
+        @Column(name = "email")
+        private String email;
+        @Column(name = "password")
+        private String password;
+
+        public UserModel() {
+        }
+
+        public UserModel(String username, String email, String password) {
+            this.username = username;
+            this.email = email;
+            this.password = password;
+        }
+
+        public static Optional<UserModel> findByUsername(String username){
+            return find("username",username).firstResultOptional();
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getEmail() {
+            return email;
+        }
+
+        public void setEmail(String email) {
+            this.email = email;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+-> util/PasswordGenerator
+    public interface PasswordGenerator {
+        String generate();
+    }
+
+-> util/RandomPasswordGenerator
+    import javax.enterprise.context.ApplicationScoped;
+    import java.util.UUID;
+    @ApplicationScoped
+    public class RandomPasswordGenerator implements PasswordGenerator{
+        @Override
+        public String generate() {
+            return UUID.randomUUID().toString();
+        }
+    }
+
+-> util/RegeneratePassword
+    import org.acme.model.UserModel;
+
+    import javax.enterprise.context.ApplicationScoped;
+    import javax.inject.Inject;
+    import javax.transaction.Transactional;
+    import java.util.Optional;
+
+    @ApplicationScoped
+    public class RegeneratePassword {
+        @Inject
+        PasswordGenerator passwordGenerator;
+
+        @Transactional
+        public void regenerate(String username){
+            final Optional<UserModel> user = UserModel.findByUsername(username);
+            user.map( u-> {
+                String newPassword = passwordGenerator.generate();
+                u.setPassword(newPassword);
+                return u;
+            });
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+-> controller/RegistrationResource
+    import org.acme.model.UserModel;
+    import org.acme.util.PasswordGenerator;
+
+    import javax.inject.Inject;
+    import javax.transaction.Transactional;
+    import javax.ws.rs.*;
+    import javax.ws.rs.core.MediaType;
+    import javax.ws.rs.core.Response;
+    import javax.ws.rs.core.UriBuilder;
+    import java.net.URI;
+
+    @Path("/registration")
+    public class RegistrationResource {
+
+        @Inject
+        PasswordGenerator passwordGenerator;
+
+        @GET
+        @Path("/{username}")
+        @Produces(MediaType.APPLICATION_JSON)
+        public Response findUserByUsername(@PathParam("username") String username){
+            return UserModel.findByUsername(username)
+                    .map(u -> Response.ok(u).build())
+                    .orElseGet(() -> Response.status(Response.Status.NOT_FOUND).build());
+        }
+
+        //need to add dependency : quarkus-resteasy-jsonb to
+        //resolve issue when testing post on postman
+        //RESTEASY003200: Could not find message body reader for type: class org.acme.model.UserModel of content type: application/json
+        @POST
+        @Transactional
+        @Consumes(MediaType.APPLICATION_JSON)
+        public Response insertUser(UserModel userModel){
+            userModel.setPassword(passwordGenerator.generate());
+            userModel.persist();
+
+
+            URI userUri = UriBuilder.fromResource(RegistrationResource.class)
+                    .path("/"+userModel.id).build();
+            System.out.println("id : "+userModel.id);
+
+            return Response.created(userUri).build();
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+
+-> Postman:
+------------------------------------------------------------------------------------------------------------
+-> POST localhost:8080/registration SEND
+
+    request body:
+    {
+        "username":"Alex",
+        "email":"email@example.com",
+        "password":"secret"
+    }
+    
+    run console output:
+        __  ____  __  _____   ___  __ ____  ______ 
+    --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+    -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+    --\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+    2023-02-10 00:16:28,876 INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.1.Final) started in 3.929s. Listening on: http://localhost:8080
+    2023-02-10 00:16:28,881 INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+    2023-02-10 00:16:28,882 INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [agroal, cdi, hibernate-orm, hibernate-orm-panache, jdbc-h2, mailer, narayana-jta, qute, resteasy, resteasy-jsonb, smallrye-context-propagation, smallrye-openapi, swagger-ui, vertx]
+    id : 1
+------------------------------------------------------------------------------------------------------------
+-> GET localhost:8080/registration/Alex SEND
+
+    response body:
+    {
+        "id": 1,
+        "email": "email@example.com",
+        "password": "44915f16-0f73-4786-852f-7dbf42278d53",
+        "username": "Alex"
+    }
+------------------------------------------------------------------------------------------------------------
+------------------------------------------------------------------------------------------------------------
+
+-> Test
+------------------------------------------------------------------------------------------------------------
+-> src/test/java/org/acme/UserModelTest
+    import io.quarkus.test.junit.QuarkusTest;
+    import org.acme.model.UserModel;
+    import org.junit.jupiter.api.Test;
+
+    import javax.transaction.Transactional;
+    import java.util.Optional;
+
+    import static org.assertj.core.api.Assertions.assertThat;
+
+    @QuarkusTest
+    public class UserModelTest {
+        @Test
+        @Transactional
+        public void shouldFindUserByUsername(){
+            final UserModel userModel = new UserModel();
+            userModel.setUsername("Alex");
+            userModel.setEmail("asotobu@example.com");
+            userModel.persist();
+
+            Optional<UserModel> foundUser = UserModel.findByUsername("Alex");
+            assertThat(foundUser)
+                    .isNotEmpty()
+                    .map(u->u.getEmail())
+                    .contains("asotobu@example.com");
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+-> src/test/java/org/acme/PasswordGeneratorTest
+    import io.quarkus.test.junit.QuarkusTest;
+    import org.acme.util.PasswordGenerator;
+    import org.junit.jupiter.api.Test;
+
+    import javax.inject.Inject;
+    import  static  org.assertj.core.api.Assertions.assertThat;
+
+    @QuarkusTest
+    public class PasswordGeneratorTest {
+        @Inject
+        PasswordGenerator passwordGenerator;
+
+        @Test
+        public void shouldGenerateRandomPassword(){
+            final String password = passwordGenerator.generate();
+            //dependency :  assertj-core
+            assertThat(password).containsPattern("[0-9A-F-]+");
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+-> src/test/java/org/acme/RegistrationResourceTest
+    import io.quarkus.test.common.http.TestHTTPEndpoint;
+    import io.quarkus.test.common.http.TestHTTPResource;
+    import io.quarkus.test.junit.QuarkusTest;
+    import io.quarkus.test.junit.mockito.InjectMock;
+    import org.acme.model.UserModel;
+    import org.acme.util.PasswordGenerator;
+    import org.junit.jupiter.api.MethodOrderer;
+    import org.junit.jupiter.api.Order;
+    import org.junit.jupiter.api.Test;
+    import org.junit.jupiter.api.TestMethodOrder;
+    import org.acme.controller.RegistrationResource;
+    import org.mockito.Mockito;
+
+    import javax.ws.rs.core.HttpHeaders;
+    import javax.ws.rs.core.MediaType;
+    import javax.ws.rs.core.Response;
+    import java.net.URL;
+
+    import static io.restassured.RestAssured.given;
+    import static org.hamcrest.CoreMatchers.is;
+
+    @QuarkusTest
+    @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+    @TestHTTPEndpoint(RegistrationResource.class)
+    public class RegistrationResourceTest {
+        @TestHTTPResource
+        @TestHTTPEndpoint(RegistrationResource.class)
+        URL url;
+
+        //dependency : quarkus-junit5-mockito
+        @InjectMock
+        PasswordGenerator passwordGenerator;
+
+        //need to add dependency : quarkus-smallrye-openapi for test to pass
+        @Test
+        @Order(1)
+        public void shouldRegisterAUser(){
+            Mockito.when(passwordGenerator.generate())
+                    .thenReturn("my-secret-password");
+            final UserModel userModel = new UserModel();
+            userModel.setUsername("ALEX");
+            userModel.setEmail("asotobu@example.com");
+
+            System.out.println("user model :"+userModel);
+
+            //dependency : rest-assured
+            given()
+                    .body(userModel)
+                    .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
+                    .header(HttpHeaders.ACCEPT,MediaType.APPLICATION_JSON)
+                    .when()
+                    .post()
+                    .then()
+                    .statusCode(Response.Status.CREATED.getStatusCode())
+                    .header("location",url+"/1");
+        }
+
+        @Test
+        @Order(2)
+        public void shouldFindUserByUsername(){
+            given()
+                    .header(HttpHeaders.ACCEPT,MediaType.APPLICATION_JSON)
+                    .when().get("/{username}","ALEX")
+                    .then()
+                    .statusCode(200)
+                    .body("username",is("ALEX"))
+                    .body("email",is("asotobu@example.com"))
+                    .body("password",is("my-secret-password"));
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+-> src/test/java/org/acme/RegeneratePasswordTest
+    import io.quarkus.panache.mock.PanacheMock;
+    import io.quarkus.test.junit.QuarkusTest;
+    import io.quarkus.test.junit.mockito.InjectMock;
+    import org.acme.model.UserModel;
+    import org.acme.util.PasswordGenerator;
+    import org.acme.util.RegeneratePassword;
+    import org.junit.jupiter.api.Test;
+    import org.mockito.Mockito;
+
+    import javax.inject.Inject;
+    import java.util.Optional;
+    import static org.assertj.core.api.Assertions.assertThat;
+    @QuarkusTest
+    public class RegeneratePasswordTest {
+        @InjectMock
+        PasswordGenerator passwordGenerator;
+
+        @Inject
+        RegeneratePassword regeneratePassword;
+
+        @Test
+        public void shouldGenerateANewPassword(){
+            Mockito.when(passwordGenerator.generate())
+                    .thenReturn("regenerated-password");
+
+            //dependency : quarkus-panache-mock
+            PanacheMock.mock(UserModel.class);
+            UserModel userModel = new
+                    UserModel("Alex","alex@example.com","my_super_password");
+            Mockito.when(UserModel.findByUsername("Alex"))
+                    .thenReturn(Optional.of(userModel));
+            regeneratePassword.regenerate("Alex");
+
+            PanacheMock.verify(
+                    UserModel.class,
+                    Mockito.times(1));
+            UserModel.findByUsername("Alex");
+
+            System.out.println("user model : "+userModel.toString());
+            assertThat(userModel.getPassword()).isEqualTo("regenerated-password");
+        }
+    }
+------------------------------------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------------------------------------
+-> error encountered:  GenerationTarget encountered exception accepting command : Error executing DDL "drop table if exists User CASCADE " via JDBC Statement: org.hibernate.tool.schema.spi.CommandAcceptanceException: Error executing DDL "drop table if exists User CASCADE " via JDBC Statement
+    2023-02-09 15:47:11,776 WARN  [org.hib.too.sch.int.ExceptionHandlerLoggedImpl] (JPA Startup Thread) GenerationTarget encountered exception accepting command : Error executing DDL "drop table if exists User CASCADE " via JDBC Statement: org.hibernate.tool.schema.spi.CommandAcceptanceException: Error executing DDL "drop table if exists User CASCADE " via JDBC Statement
+        at org.hibernate.tool.schema.internal.exec.GenerationTargetToDatabase.accept(GenerationTargetToDatabase.java:67)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.applySqlString(SchemaDropperImpl.java:387)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.applySqlStrings(SchemaDropperImpl.java:371)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.dropFromMetadata(SchemaDropperImpl.java:246)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.performDrop(SchemaDropperImpl.java:156)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.doDrop(SchemaDropperImpl.java:128)
+        at org.hibernate.tool.schema.internal.SchemaDropperImpl.doDrop(SchemaDropperImpl.java:114)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.performDatabaseAction(SchemaManagementToolCoordinator.java:157)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.process(SchemaManagementToolCoordinator.java:85)
+        at org.hibernate.internal.SessionFactoryImpl.<init>(SessionFactoryImpl.java:335)
+        at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:74)
+        at io.quarkus.hibernate.orm.runtime.FastBootHibernatePersistenceProvider.createEntityManagerFactory(FastBootHibernatePersistenceProvider.java:72)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:80)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:55)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$LazyPersistenceUnit.get(JPAConfig.java:167)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$1.run(JPAConfig.java:68)
+        at java.base/java.lang.Thread.run(Thread.java:829)
+    Caused by: org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "drop table if exists [*]User CASCADE "; expected "identifier"; SQL statement:
+    drop table if exists User CASCADE  [42001-214]
+        at org.h2.message.DbException.getJdbcSQLException(DbException.java:502)
+        at org.h2.message.DbException.getJdbcSQLException(DbException.java:477)
+        at org.h2.message.DbException.getSyntaxError(DbException.java:261)
+        at org.h2.command.Parser.readIdentifier(Parser.java:5656)
+        at org.h2.command.Parser.readIdentifierWithSchema(Parser.java:5616)
+        at org.h2.command.Parser.readIdentifierWithSchema(Parser.java:5645)
+        at org.h2.command.Parser.parseDrop(Parser.java:2188)
+        at org.h2.command.Parser.parsePrepared(Parser.java:776)
+        at org.h2.command.Parser.parse(Parser.java:689)
+        at org.h2.command.Parser.parse(Parser.java:661)
+        at org.h2.command.Parser.prepareCommand(Parser.java:569)
+        at org.h2.engine.SessionLocal.prepareLocal(SessionLocal.java:631)
+        at org.h2.engine.SessionLocal.prepareCommand(SessionLocal.java:554)
+        at org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1116)
+        at org.h2.jdbc.JdbcStatement.executeInternal(JdbcStatement.java:237)
+        at org.h2.jdbc.JdbcStatement.execute(JdbcStatement.java:223)
+        at io.agroal.pool.wrapper.StatementWrapper.execute(StatementWrapper.java:235)
+        at org.hibernate.tool.schema.internal.exec.GenerationTargetToDatabase.accept(GenerationTargetToDatabase.java:54)
+        ... 16 more
+
+    2023-02-09 15:47:11,806 WARN  [org.hib.too.sch.int.ExceptionHandlerLoggedImpl] (JPA Startup Thread) GenerationTarget encountered exception accepting command : Error executing DDL "create table User (id bigint not null, email varchar(255), username varchar(255), primary key (id))" via JDBC Statement: org.hibernate.tool.schema.spi.CommandAcceptanceException: Error executing DDL "create table User (id bigint not null, email varchar(255), username varchar(255), primary key (id))" via JDBC Statement
+        at org.hibernate.tool.schema.internal.exec.GenerationTargetToDatabase.accept(GenerationTargetToDatabase.java:67)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.applySqlString(SchemaCreatorImpl.java:458)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.applySqlStrings(SchemaCreatorImpl.java:442)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.createFromMetadata(SchemaCreatorImpl.java:325)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.performCreation(SchemaCreatorImpl.java:169)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.doCreation(SchemaCreatorImpl.java:138)
+        at org.hibernate.tool.schema.internal.SchemaCreatorImpl.doCreation(SchemaCreatorImpl.java:124)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.performDatabaseAction(SchemaManagementToolCoordinator.java:168)
+        at org.hibernate.tool.schema.spi.SchemaManagementToolCoordinator.process(SchemaManagementToolCoordinator.java:85)
+        at org.hibernate.internal.SessionFactoryImpl.<init>(SessionFactoryImpl.java:335)
+        at io.quarkus.hibernate.orm.runtime.boot.FastBootEntityManagerFactoryBuilder.build(FastBootEntityManagerFactoryBuilder.java:74)
+        at io.quarkus.hibernate.orm.runtime.FastBootHibernatePersistenceProvider.createEntityManagerFactory(FastBootHibernatePersistenceProvider.java:72)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:80)
+        at javax.persistence.Persistence.createEntityManagerFactory(Persistence.java:55)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$LazyPersistenceUnit.get(JPAConfig.java:167)
+        at io.quarkus.hibernate.orm.runtime.JPAConfig$1.run(JPAConfig.java:68)
+        at java.base/java.lang.Thread.run(Thread.java:829)
+    Caused by: org.h2.jdbc.JdbcSQLSyntaxErrorException: Syntax error in SQL statement "create table [*]User (id bigint not null, email varchar(255), username varchar(255), primary key (id))"; expected "identifier"; SQL statement:
+    create table User (id bigint not null, email varchar(255), username varchar(255), primary key (id)) [42001-214]
+        at org.h2.message.DbException.getJdbcSQLException(DbException.java:502)
+        at org.h2.message.DbException.getJdbcSQLException(DbException.java:477)
+        at org.h2.message.DbException.getSyntaxError(DbException.java:261)
+        at org.h2.command.Parser.readIdentifier(Parser.java:5656)
+        at org.h2.command.Parser.readIdentifierWithSchema(Parser.java:5616)
+        at org.h2.command.Parser.readIdentifierWithSchema(Parser.java:5645)
+        at org.h2.command.Parser.parseCreateTable(Parser.java:9253)
+        at org.h2.command.Parser.parseCreate(Parser.java:6784)
+        at org.h2.command.Parser.parsePrepared(Parser.java:763)
+        at org.h2.command.Parser.parse(Parser.java:689)
+        at org.h2.command.Parser.parse(Parser.java:661)
+        at org.h2.command.Parser.prepareCommand(Parser.java:569)
+        at org.h2.engine.SessionLocal.prepareLocal(SessionLocal.java:631)
+        at org.h2.engine.SessionLocal.prepareCommand(SessionLocal.java:554)
+        at org.h2.jdbc.JdbcConnection.prepareCommand(JdbcConnection.java:1116)
+        at org.h2.jdbc.JdbcStatement.executeInternal(JdbcStatement.java:237)
+        at org.h2.jdbc.JdbcStatement.execute(JdbcStatement.java:223)
+        at io.agroal.pool.wrapper.StatementWrapper.execute(StatementWrapper.java:235)
+        at org.hibernate.tool.schema.internal.exec.GenerationTargetToDatabase.accept(GenerationTargetToDatabase.java:54)
+        ... 16 more
+
+    2023-02-09 15:47:12,291 INFO  [io.quarkus] (Quarkus Main Thread) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.1.Final) started in 4.938s. Listening on: http://localhost:8080
+    2023-02-09 15:47:12,292 INFO  [io.quarkus] (Quarkus Main Thread) Profile dev activated. Live Coding activated.
+    2023-02-09 15:47:12,293 INFO  [io.quarkus] (Quarkus Main Thread) Installed features: [agroal, cdi, hibernate-orm, hibernate-orm-panache, jdbc-h2, mailer, narayana-jta, qute, resteasy, smallrye-context-propagation, vertx]
+
+    solution:
+
+    changed class name from User to UserModel
+------------------------------------------------------------------------------------------------------------
+-> error encountered: RESTEASY002010: Failed to execute: javax.ws.rs.NotSupportedException: RESTEASY003200: Could not find message body reader for type: class org.acme.model.UserModel of content type: application/json
+    2023-02-10 00:12:40,841 ERROR [org.jbo.res.res.i18n] (executor-thread-0) RESTEASY002010: Failed to execute: javax.ws.rs.NotSupportedException: RESTEASY003200: Could not find message body reader for type: class org.acme.model.UserModel of content type: application/json
+        at org.jboss.resteasy.core.interception.jaxrs.ServerReaderInterceptorContext.throwReaderNotFound(ServerReaderInterceptorContext.java:55)
+        at org.jboss.resteasy.core.interception.jaxrs.AbstractReaderInterceptorContext.getReader(AbstractReaderInterceptorContext.java:133)
+        at org.jboss.resteasy.core.interception.jaxrs.AbstractReaderInterceptorContext.proceed(AbstractReaderInterceptorContext.java:75)
+        at org.jboss.resteasy.core.MessageBodyParameterInjector.inject(MessageBodyParameterInjector.java:213)
+        at org.jboss.resteasy.core.MethodInjectorImpl.injectArguments(MethodInjectorImpl.java:95)
+        at org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:128)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)
+        at org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)
+        at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)
+        at org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)
+        at org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)
+        at org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)
+        at org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)
+        at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)
+        at io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)
+        at io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)
+        at io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)
+        at io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)
+        at org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)
+        at org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)
+        at org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)
+        at org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)
+        at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+        at java.base/java.lang.Thread.run(Thread.java:829)
+------------------------------------------------------------------------------------------------------------
+-> error encountered: unable to marshal type "org.acme.model.UserModel" as an element because it is missing an @XmlRootElement annotation]
+    C:\Users\MMACARANAS\.jdks\corretto-11.0.18\bin\java.exe -ea -Djava.util.logging.manager=org.jboss.logmanager.LogManager -Didea.test.cyclic.buffer.size=1048576 "-javaagent:C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2022.3.2\lib\idea_rt.jar=56220:C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2022.3.2\bin" -Dfile.encoding=UTF-8 -classpath "C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2022.3.2\lib\idea_rt.jar;C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2022.3.2\plugins\junit\lib\junit5-rt.jar;C:\Program Files\JetBrains\IntelliJ IDEA Community Edition 2022.3.2\plugins\junit\lib\junit-rt.jar;C:\Users\MMACARANAS\Downloads\code-with-quarkus\code-with-quarkus\target\test-classes;C:\Users\MMACARANAS\Downloads\code-with-quarkus\code-with-quarkus\target\classes;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-resteasy-jsonb\2.16.1.Final\quarkus-resteasy-jsonb-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-jsonb\2.16.1.Final\quarkus-jsonb-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\eclipse\yasson\1.0.11\yasson-1.0.11.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-jsonp\2.16.1.Final\quarkus-jsonp-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\glassfish\jakarta.json\1.1.6\jakarta.json-1.1.6.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\resteasy\resteasy-json-binding-provider\4.7.7.Final\resteasy-json-binding-provider-4.7.7.Final.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\json\bind\jakarta.json.bind-api\1.0.2\jakarta.json.bind-api-1.0.2.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\logging\jboss-logging\3.5.0.Final\jboss-logging-3.5.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\resteasy\resteasy-json-p-provider\4.7.7.Final\resteasy-json-p-provider-4.7.7.Final.jar;C:\Users\MMACARANAS\.m2\repository\commons-io\commons-io\2.11.0\commons-io-2.11.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-jdbc-h2\2.16.1.Final\quarkus-jdbc-h2-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\com\h2database\h2\2.1.214\h2-2.1.214.jar;C:\Users\MMACARANAS\.m2\repository\org\locationtech\jts\jts-core\1.17.0\jts-core-1.17.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-panache-mock\2.16.1.Final\quarkus-panache-mock-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-core\2.16.1.Final\quarkus-core-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\annotation\jakarta.annotation-api\1.3.5\jakarta.annotation-api-1.3.5.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\enterprise\jakarta.enterprise.cdi-api\2.0.2\jakarta.enterprise.cdi-api-2.0.2.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\el\jakarta.el-api\3.0.3\jakarta.el-api-3.0.3.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\interceptor\jakarta.interceptor-api\1.2.5\jakarta.interceptor-api-1.2.5.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\inject\jakarta.inject-api\1.0\jakarta.inject-api-1.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-ide-launcher\2.16.1.Final\quarkus-ide-launcher-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-development-mode-spi\2.16.1.Final\quarkus-development-mode-spi-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\config\smallrye-config\2.13.1\smallrye-config-2.13.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\config\smallrye-config-core\2.13.1\smallrye-config-core-2.13.1.jar;C:\Users\MMACARANAS\.m2\repository\org\eclipse\microprofile\config\microprofile-config-api\2.0.1\microprofile-config-api-2.0.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-expression\1.13.2\smallrye-common-expression-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-function\1.13.2\smallrye-common-function-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-classloader\1.13.2\smallrye-common-classloader-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\config\smallrye-config-common\2.13.1\smallrye-config-common-2.13.1.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\logmanager\jboss-logmanager-embedded\1.0.11\jboss-logmanager-embedded-1.0.11.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\logging\jboss-logging-annotations\2.2.1.Final\jboss-logging-annotations-2.2.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\threads\jboss-threads\3.4.3.Final\jboss-threads-3.4.3.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\slf4j\slf4j-api\1.7.36\slf4j-api-1.7.36.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\slf4j\slf4j-jboss-logmanager\1.2.0.Final\slf4j-jboss-logmanager-1.2.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\graalvm\sdk\graal-sdk\22.3.0\graal-sdk-22.3.0.jar;C:\Users\MMACARANAS\.m2\repository\org\wildfly\common\wildfly-common\1.5.4.Final-format-001\wildfly-common-1.5.4.Final-format-001.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-bootstrap-runner\2.16.1.Final\quarkus-bootstrap-runner-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-fs-util\0.0.9\quarkus-fs-util-0.0.9.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-panache-common-deployment\2.16.1.Final\quarkus-panache-common-deployment-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-core-deployment\2.16.1.Final\quarkus-core-deployment-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\aesh\readline\2.2\readline-2.2.jar;C:\Users\MMACARANAS\.m2\repository\org\fusesource\jansi\jansi\1.18\jansi-1.18.jar;C:\Users\MMACARANAS\.m2\repository\org\aesh\aesh\2.7\aesh-2.7.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\gizmo\gizmo\1.6.0.Final\gizmo-1.6.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\ow2\asm\asm-util\9.4\asm-util-9.4.jar;C:\Users\MMACARANAS\.m2\repository\org\ow2\asm\asm-analysis\9.4\asm-analysis-9.4.jar;C:\Users\MMACARANAS\.m2\repository\org\ow2\asm\asm-commons\9.4\asm-commons-9.4.jar;C:\Users\MMACARANAS\.m2\repository\org\ow2\asm\asm-tree\9.4\asm-tree-9.4.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-class-change-agent\2.16.1.Final\quarkus-class-change-agent-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-devtools-utilities\2.16.1.Final\quarkus-devtools-utilities-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-builder\2.16.1.Final\quarkus-builder-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\platform\junit-platform-launcher\1.9.2\junit-platform-launcher-1.9.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\jandex\3.0.5\jandex-3.0.5.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\validation\jakarta.validation-api\2.0.2\jakarta.validation-api-2.0.2.jar;C:\Users\MMACARANAS\.m2\repository\org\ow2\asm\asm\9.4\asm-9.4.jar;C:\Users\MMACARANAS\.m2\repository\org\mockito\mockito-core\4.11.0\mockito-core-4.11.0.jar;C:\Users\MMACARANAS\.m2\repository\net\bytebuddy\byte-buddy\1.12.18\byte-buddy-1.12.18.jar;C:\Users\MMACARANAS\.m2\repository\net\bytebuddy\byte-buddy-agent\1.12.19\byte-buddy-agent-1.12.19.jar;C:\Users\MMACARANAS\.m2\repository\org\objenesis\objenesis\3.3\objenesis-3.3.jar;C:\Users\MMACARANAS\.m2\repository\org\assertj\assertj-core\3.17.2\assertj-core-3.17.2.jar;C:\Users\MMACARANAS\.m2\repository\io\rest-assured\rest-assured\4.5.1\rest-assured-4.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\groovy\groovy\3.0.9\groovy-3.0.9.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\groovy\groovy-xml\3.0.9\groovy-xml-3.0.9.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\httpcomponents\httpclient\4.5.14\httpclient-4.5.14.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\httpcomponents\httpcore\4.4.16\httpcore-4.4.16.jar;C:\Users\MMACARANAS\.m2\repository\commons-codec\commons-codec\1.15\commons-codec-1.15.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\httpcomponents\httpmime\4.5.14\httpmime-4.5.14.jar;C:\Users\MMACARANAS\.m2\repository\org\hamcrest\hamcrest\2.1\hamcrest-2.1.jar;C:\Users\MMACARANAS\.m2\repository\org\ccil\cowan\tagsoup\tagsoup\1.2.1\tagsoup-1.2.1.jar;C:\Users\MMACARANAS\.m2\repository\io\rest-assured\json-path\4.5.1\json-path-4.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\groovy\groovy-json\3.0.9\groovy-json-3.0.9.jar;C:\Users\MMACARANAS\.m2\repository\io\rest-assured\rest-assured-common\4.5.1\rest-assured-common-4.5.1.jar;C:\Users\MMACARANAS\.m2\repository\io\rest-assured\xml-path\4.5.1\xml-path-4.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\commons\commons-lang3\3.12.0\commons-lang3-3.12.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-junit5-mockito\2.16.1.Final\quarkus-junit5-mockito-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-junit5-mockito-config\2.16.1.Final\quarkus-junit5-mockito-config-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-arc-deployment\2.16.1.Final\quarkus-arc-deployment-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-smallrye-context-propagation-spi\2.16.1.Final\quarkus-smallrye-context-propagation-spi-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-vertx-http-dev-console-spi\2.16.1.Final\quarkus-vertx-http-dev-console-spi-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\arc\arc-processor\2.16.1.Final\arc-processor-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-mutiny\2.16.1.Final\quarkus-mutiny-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\mutiny\1.9.0\mutiny-1.9.0.jar;C:\Users\MMACARANAS\.m2\repository\org\reactivestreams\reactive-streams\1.0.3\reactive-streams-1.0.3.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-smallrye-context-propagation\2.16.1.Final\quarkus-smallrye-context-propagation-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\smallrye-context-propagation\1.2.2\smallrye-context-propagation-1.2.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\smallrye-context-propagation-api\1.2.2\smallrye-context-propagation-api-1.2.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\smallrye-context-propagation-storage\1.2.2\smallrye-context-propagation-storage-1.2.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\mutiny-smallrye-context-propagation\1.9.0\mutiny-smallrye-context-propagation-1.9.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-hibernate-orm-panache\2.16.1.Final\quarkus-hibernate-orm-panache-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-hibernate-orm\2.16.1.Final\quarkus-hibernate-orm-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-agroal\2.16.1.Final\quarkus-agroal-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-datasource\2.16.1.Final\quarkus-datasource-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-datasource-common\2.16.1.Final\quarkus-datasource-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\agroal\agroal-api\1.16\agroal-api-1.16.jar;C:\Users\MMACARANAS\.m2\repository\io\agroal\agroal-narayana\1.16\agroal-narayana-1.16.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\jboss-transaction-spi\7.6.0.Final\jboss-transaction-spi-7.6.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\agroal\agroal-pool\1.16\agroal-pool-1.16.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-narayana-jta\2.16.1.Final\quarkus-narayana-jta-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-transaction-annotations\2.16.1.Final\quarkus-transaction-annotations-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\smallrye-context-propagation-jta\1.2.2\smallrye-context-propagation-jta-1.2.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-reactive-converter-api\2.7.0\smallrye-reactive-converter-api-2.7.0.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-reactive-converter-mutiny\2.7.0\smallrye-reactive-converter-mutiny-2.7.0.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\narayana\jta\narayana-jta\5.13.1.Final\narayana-jta-5.13.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\spec\javax\resource\jboss-connector-api_1.7_spec\1.0.0.Final\jboss-connector-api_1.7_spec-1.0.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\narayana\jts\narayana-jts-integration\5.13.1.Final\narayana-jts-integration-5.13.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\hibernate\hibernate-core\5.6.14.Final\hibernate-core-5.6.14.Final.jar;C:\Users\MMACARANAS\.m2\repository\antlr\antlr\2.7.7\antlr-2.7.7.jar;C:\Users\MMACARANAS\.m2\repository\com\fasterxml\classmate\1.5.1\classmate-1.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\hibernate\common\hibernate-commons-annotations\5.1.2.Final\hibernate-commons-annotations-5.1.2.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\hibernate\hibernate-graalvm\5.6.14.Final\hibernate-graalvm-5.6.14.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\glassfish\jaxb\jaxb-runtime\2.3.3-b02\jaxb-runtime-2.3.3-b02.jar;C:\Users\MMACARANAS\.m2\repository\org\glassfish\jaxb\txw2\2.3.3-b02\txw2-2.3.3-b02.jar;C:\Users\MMACARANAS\.m2\repository\com\sun\istack\istack-commons-runtime\3.0.10\istack-commons-runtime-3.0.10.jar;C:\Users\MMACARANAS\.m2\repository\com\sun\activation\jakarta.activation\1.2.1\jakarta.activation-1.2.1.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\spec\javax\xml\bind\jboss-jaxb-api_2.3_spec\2.0.0.Final\jboss-jaxb-api_2.3_spec-2.0.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\persistence\jakarta.persistence-api\2.2.3\jakarta.persistence-api-2.2.3.jar;C:\Users\MMACARANAS\.m2\repository\jakarta\transaction\jakarta.transaction-api\1.3.3\jakarta.transaction-api-1.3.3.jar;C:\Users\MMACARANAS\.m2\repository\org\hibernate\quarkus-local-cache\0.1.1\quarkus-local-cache-0.1.1.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-caffeine\2.16.1.Final\quarkus-caffeine-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\com\github\ben-manes\caffeine\caffeine\3.1.1\caffeine-3.1.1.jar;C:\Users\MMACARANAS\.m2\repository\com\google\errorprone\error_prone_annotations\2.17.0\error_prone_annotations-2.17.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-hibernate-orm-panache-common\2.16.1.Final\quarkus-hibernate-orm-panache-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-panache-hibernate-common\2.16.1.Final\quarkus-panache-hibernate-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-panache-common\2.16.1.Final\quarkus-panache-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-resteasy\2.16.1.Final\quarkus-resteasy-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-vertx-http\2.16.1.Final\quarkus-vertx-http-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-security-runtime-spi\2.16.1.Final\quarkus-security-runtime-spi-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-credentials\2.16.1.Final\quarkus-credentials-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-vertx-context\1.13.2\smallrye-common-vertx-context-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-core\4.3.7\vertx-core-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-common\4.1.86.Final\netty-common-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-handler-proxy\4.1.86.Final\netty-handler-proxy-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec-socks\4.1.86.Final\netty-codec-socks-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-resolver\4.1.86.Final\netty-resolver-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-resolver-dns\4.1.86.Final\netty-resolver-dns-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec-dns\4.1.86.Final\netty-codec-dns-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\com\fasterxml\jackson\core\jackson-core\2.14.2\jackson-core-2.14.2.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-constraint\1.13.2\smallrye-common-constraint-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-vertx-http-dev-console-runtime-spi\2.16.1.Final\quarkus-vertx-http-dev-console-runtime-spi-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\security\quarkus-security\1.1.4.Final\quarkus-security-1.1.4.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-web\2.30.1\smallrye-mutiny-vertx-web-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-web-common\2.30.1\smallrye-mutiny-vertx-web-common-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-auth-common\2.30.1\smallrye-mutiny-vertx-auth-common-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-bridge-common\2.30.1\smallrye-mutiny-vertx-bridge-common-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-uri-template\2.30.1\smallrye-mutiny-vertx-uri-template-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-uri-template\4.3.7\vertx-uri-template-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-web\4.3.7\vertx-web-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-web-common\4.3.7\vertx-web-common-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-auth-common\4.3.7\vertx-auth-common-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-bridge-common\4.3.7\vertx-bridge-common-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\github\crac\org-crac\0.1.3\org-crac-0.1.3.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-resteasy-server-common\2.16.1.Final\quarkus-resteasy-server-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-resteasy-common\2.16.1.Final\quarkus-resteasy-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\resteasy\resteasy-core\4.7.7.Final\resteasy-core-4.7.7.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\spec\javax\ws\rs\jboss-jaxrs-api_2.1_spec\2.0.1.Final\jboss-jaxrs-api_2.1_spec-2.0.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\resteasy\resteasy-core-spi\4.7.7.Final\resteasy-core-spi-4.7.7.Final.jar;C:\Users\MMACARANAS\.m2\repository\com\ibm\async\asyncutil\0.1.0\asyncutil-0.1.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-mailer\2.16.1.Final\quarkus-mailer-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-vertx\2.16.1.Final\quarkus-vertx-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-netty\2.16.1.Final\quarkus-netty-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec\4.1.86.Final\netty-codec-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec-http\4.1.86.Final\netty-codec-http-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec-http2\4.1.86.Final\netty-codec-http2-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-handler\4.1.86.Final\netty-handler-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-transport-native-unix-common\4.1.86.Final\netty-transport-native-unix-common-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\com\aayushatharva\brotli4j\brotli4j\1.8.0\brotli4j-1.8.0.jar;C:\Users\MMACARANAS\.m2\repository\com\aayushatharva\brotli4j\native-windows-x86_64\1.8.0\native-windows-x86_64-1.8.0.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-codec-haproxy\4.1.86.Final\netty-codec-haproxy-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-buffer\4.1.86.Final\netty-buffer-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\netty\netty-transport\4.1.86.Final\netty-transport-4.1.86.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-annotation\1.13.2\smallrye-common-annotation-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-vertx-latebound-mdc-provider\2.16.1.Final\quarkus-vertx-latebound-mdc-provider-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-core\2.30.1\smallrye-mutiny-vertx-core-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-runtime\2.30.1\smallrye-mutiny-vertx-runtime-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\vertx-mutiny-generator\2.30.1\vertx-mutiny-generator-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-codegen\4.3.7\vertx-codegen-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\smallrye-fault-tolerance-vertx\5.6.0\smallrye-fault-tolerance-vertx-5.6.0.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-qute\2.16.1.Final\quarkus-qute-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\qute\qute-core\2.16.1.Final\qute-core-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\reactive\smallrye-mutiny-vertx-mail-client\2.30.1\smallrye-mutiny-vertx-mail-client-2.30.1.jar;C:\Users\MMACARANAS\.m2\repository\io\vertx\vertx-mail-client\4.3.7\vertx-mail-client-4.3.7.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-arc\2.16.1.Final\quarkus-arc-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\arc\arc\2.16.1.Final\arc-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\eclipse\microprofile\context-propagation\microprofile-context-propagation-api\1.2\microprofile-context-propagation-api-1.2.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-junit5\2.16.1.Final\quarkus-junit5-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-bootstrap-core\2.16.1.Final\quarkus-bootstrap-core-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-bootstrap-app-model\2.16.1.Final\quarkus-bootstrap-app-model-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\smallrye\common\smallrye-common-io\1.13.2\smallrye-common-io-1.13.2.jar;C:\Users\MMACARANAS\.m2\repository\org\eclipse\sisu\org.eclipse.sisu.inject\0.3.5\org.eclipse.sisu.inject-0.3.5.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-test-common\2.16.1.Final\quarkus-test-common-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-bootstrap-maven-resolver\2.16.1.Final\quarkus-bootstrap-maven-resolver-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-embedder\3.8.6\maven-embedder-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-settings\3.8.6\maven-settings-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-core\3.8.6\maven-core-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-artifact\3.8.6\maven-artifact-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-component-annotations\2.1.0\plexus-component-annotations-2.1.0.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-plugin-api\3.8.6\maven-plugin-api-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-model\3.8.6\maven-model-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-model-builder\3.8.6\maven-model-builder-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-builder-support\3.8.6\maven-builder-support-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-api\1.6.3\maven-resolver-api-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-util\1.6.3\maven-resolver-util-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\shared\maven-shared-utils\3.3.4\maven-shared-utils-3.3.4.jar;C:\Users\MMACARANAS\.m2\repository\com\google\inject\guice\4.2.2\guice-4.2.2-no_aop.jar;C:\Users\MMACARANAS\.m2\repository\com\google\guava\guava\31.1-jre\guava-31.1-jre.jar;C:\Users\MMACARANAS\.m2\repository\com\google\guava\failureaccess\1.0.1\failureaccess-1.0.1.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-classworlds\2.6.0\plexus-classworlds-2.6.0.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-sec-dispatcher\2.0\plexus-sec-dispatcher-2.0.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-cipher\2.0\plexus-cipher-2.0.jar;C:\Users\MMACARANAS\.m2\repository\commons-cli\commons-cli\1.4\commons-cli-1.4.jar;C:\Users\MMACARANAS\.m2\repository\org\eclipse\sisu\org.eclipse.sisu.plexus\0.3.5\org.eclipse.sisu.plexus-0.3.5.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-settings-builder\3.8.6\maven-settings-builder-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-interpolation\1.26\plexus-interpolation-1.26.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-resolver-provider\3.8.6\maven-resolver-provider-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\maven-repository-metadata\3.8.6\maven-repository-metadata-3.8.6.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-spi\1.6.3\maven-resolver-spi-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-impl\1.6.3\maven-resolver-impl-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\codehaus\plexus\plexus-utils\3.3.0\plexus-utils-3.3.0.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-connector-basic\1.6.3\maven-resolver-connector-basic-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\resolver\maven-resolver-transport-wagon\1.6.3\maven-resolver-transport-wagon-1.6.3.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\wagon\wagon-http\3.5.1\wagon-http-3.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\wagon\wagon-http-shared\3.5.1\wagon-http-shared-3.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\wagon\wagon-provider-api\3.5.1\wagon-provider-api-3.5.1.jar;C:\Users\MMACARANAS\.m2\repository\org\apache\maven\wagon\wagon-file\3.5.1\wagon-file-3.5.1.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-bootstrap-gradle-resolver\2.16.1.Final\quarkus-bootstrap-gradle-resolver-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\jboss\logging\commons-logging-jboss-logging\1.0.0.Final\commons-logging-jboss-logging-1.0.0.Final.jar;C:\Users\MMACARANAS\.m2\repository\io\quarkus\quarkus-junit5-properties\2.16.1.Final\quarkus-junit5-properties-2.16.1.Final.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\jupiter\junit-jupiter\5.9.2\junit-jupiter-5.9.2.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\jupiter\junit-jupiter-api\5.9.2\junit-jupiter-api-5.9.2.jar;C:\Users\MMACARANAS\.m2\repository\org\opentest4j\opentest4j\1.2.0\opentest4j-1.2.0.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\platform\junit-platform-commons\1.9.2\junit-platform-commons-1.9.2.jar;C:\Users\MMACARANAS\.m2\repository\org\apiguardian\apiguardian-api\1.1.2\apiguardian-api-1.1.2.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\jupiter\junit-jupiter-params\5.9.2\junit-jupiter-params-5.9.2.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\jupiter\junit-jupiter-engine\5.9.2\junit-jupiter-engine-5.9.2.jar;C:\Users\MMACARANAS\.m2\repository\org\junit\platform\junit-platform-engine\1.9.2\junit-platform-engine-1.9.2.jar;C:\Users\MMACARANAS\.m2\repository\com\thoughtworks\xstream\xstream\1.4.20\xstream-1.4.20.jar;C:\Users\MMACARANAS\.m2\repository\io\github\x-stream\mxparser\1.2.2\mxparser-1.2.2.jar;C:\Users\MMACARANAS\.m2\repository\xmlpull\xmlpull\1.1.3.1\xmlpull-1.1.3.1.jar" com.intellij.rt.junit.JUnitStarter -ideVersion5 -junit5 org.acme.RegistrationResourceTest,shouldRegisterAUser
+    2023-02-10 00:31:26,023 INFO  [io.quarkus] (main) code-with-quarkus 1.0.0-SNAPSHOT on JVM (powered by Quarkus 2.16.1.Final) started in 4.682s. Listening on: http://localhost:8081
+    2023-02-10 00:31:26,037 INFO  [io.quarkus] (main) Profile test activated. 
+    2023-02-10 00:31:26,038 INFO  [io.quarkus] (main) Installed features: [agroal, cdi, hibernate-orm, hibernate-orm-panache, jdbc-h2, mailer, narayana-jta, qute, resteasy, resteasy-jsonb, smallrye-context-propagation, vertx]
+    user model :UserModel<null>
+
+    javax.xml.bind.MarshalException
+    - with linked exception:
+    [com.sun.istack.SAXException2: unable to marshal type "org.acme.model.UserModel" as an element because it is missing an @XmlRootElement annotation]
+        at com.sun.xml.bind.v2.runtime.MarshallerImpl.write(MarshallerImpl.java:301)
+        at com.sun.xml.bind.v2.runtime.MarshallerImpl.marshal(MarshallerImpl.java:226)
+        at javax.xml.bind.helpers.AbstractMarshallerImpl.marshal(AbstractMarshallerImpl.java:101)
+        at javax.xml.bind.Marshaller$marshal$0.call(Unknown Source)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(CallSiteArray.java:47)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:148)
+        at io.restassured.internal.mapping.JaxbMapper.serialize(JaxbMapper.groovy:50)
+        at io.restassured.mapper.ObjectMapper$serialize.call(Unknown Source)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(CallSiteArray.java:47)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:139)
+        at io.restassured.internal.mapping.ObjectMapping.serializeWithJaxb(ObjectMapping.groovy:222)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+        at org.codehaus.groovy.reflection.CachedMethod.invoke(CachedMethod.java:107)
+        at org.codehaus.groovy.runtime.callsite.StaticMetaMethodSite$StaticMetaMethodSiteNoUnwrapNoCoerce.invoke(StaticMetaMethodSite.java:149)
+        at org.codehaus.groovy.runtime.callsite.StaticMetaMethodSite.callStatic(StaticMetaMethodSite.java:100)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCallStatic(CallSiteArray.java:55)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callStatic(AbstractCallSite.java:217)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.callStatic(AbstractCallSite.java:240)
+        at io.restassured.internal.mapping.ObjectMapping.serialize(ObjectMapping.groovy:143)
+        at io.restassured.internal.mapping.ObjectMapping$serialize.call(Unknown Source)
+        at org.codehaus.groovy.runtime.callsite.CallSiteArray.defaultCall(CallSiteArray.java:47)
+        at org.codehaus.groovy.runtime.callsite.AbstractCallSite.call(AbstractCallSite.java:125)
+        at io.restassured.internal.RequestSpecificationImpl.body(RequestSpecificationImpl.groovy:756)
+        at org.acme.RegistrationResourceTest.shouldRegisterAUser(RegistrationResourceTest.java:50)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+        at io.quarkus.test.junit.QuarkusTestExtension.runExtensionMethod(QuarkusTestExtension.java:1002)
+        at io.quarkus.test.junit.QuarkusTestExtension.interceptTestMethod(QuarkusTestExtension.java:816)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+        at org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+        at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+        at org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+        at org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+        at org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$7(TestMethodTestDescriptor.java:217)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+        at org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:151)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+        at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+        at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+        at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+        at java.base/java.util.ArrayList.forEach(ArrayList.java:1541)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:155)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:141)
+        at org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:139)
+        at org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:138)
+        at org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:95)
+        at org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+        at org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+        at org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:147)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:127)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:90)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:55)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:102)
+        at org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:54)
+        at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+        at org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+        at org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+        at org.junit.platform.launcher.core.SessionPerRequestLauncher.execute(SessionPerRequestLauncher.java:53)
+        at com.intellij.junit5.JUnit5IdeaTestRunner.startRunnerWithArgs(JUnit5IdeaTestRunner.java:57)
+        at com.intellij.rt.junit.IdeaTestRunner$Repeater$1.execute(IdeaTestRunner.java:38)
+        at com.intellij.rt.execution.junit.TestsRepeater.repeat(TestsRepeater.java:11)
+        at com.intellij.rt.junit.IdeaTestRunner$Repeater.startRunnerWithArgs(IdeaTestRunner.java:35)
+        at com.intellij.rt.junit.JUnitStarter.prepareStreamsAndStart(JUnitStarter.java:235)
+        at com.intellij.rt.junit.JUnitStarter.main(JUnitStarter.java:54)
+    Caused by: com.sun.istack.SAXException2: unable to marshal type "org.acme.model.UserModel" as an element because it is missing an @XmlRootElement annotation
+        at com.sun.xml.bind.v2.runtime.XMLSerializer.reportError(XMLSerializer.java:219)
+        at com.sun.xml.bind.v2.runtime.ClassBeanInfoImpl.serializeRoot(ClassBeanInfoImpl.java:307)
+        at com.sun.xml.bind.v2.runtime.XMLSerializer.childAsRoot(XMLSerializer.java:464)
+        at com.sun.xml.bind.v2.runtime.MarshallerImpl.write(MarshallerImpl.java:298)
+        ... 100 more
+
+    2023-02-10 00:31:27,225 INFO  [io.quarkus] (main) code-with-quarkus stopped in 0.045s
+
+    Process finished with exit code -1
+------------------------------------------------------------------------------------------------------------
