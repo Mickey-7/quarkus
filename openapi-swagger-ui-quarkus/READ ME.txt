@@ -1,0 +1,311 @@
+reference: 
+    https://www.bookstack.cn/read/quarkus-1.7-en/53dccd6f67010caa.md
+    https://github.com/quarkusio/quarkus-quickstarts/blob/main/openapi-swaggerui-quickstart/src/test/java/org/acme/openapi/swaggerui/FruitResourceTest.java
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> dependecies:
+    <dependency>
+      <groupId>io.rest-assured</groupId>
+      <artifactId>rest-assured</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy-jsonb</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-smallrye-openapi</artifactId>
+    </dependency>
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/Fruit
+    public class Fruit {
+        public String name;
+        public String description;
+
+        public Fruit() {
+        }
+
+        public Fruit(String name, String description) {
+            this.name = name;
+            this.description = description;
+        }   
+    }                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/FruitResource
+    import javax.ws.rs.*;
+    import javax.ws.rs.core.MediaType;
+    import java.util.Collections;
+    import java.util.LinkedHashMap;
+    import java.util.Set;
+
+    @Path("/fruits")
+    @Produces(MediaType.APPLICATION_JSON)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public class FruitResource {
+
+        private Set<Fruit> fruits = Collections.newSetFromMap(
+                Collections.synchronizedMap(new LinkedHashMap<>())
+        );
+
+        public FruitResource(){
+            fruits.add(new Fruit("Apple","Winter fruit"));
+            fruits.add(new Fruit("Pineapple", "Tropical fruit"));
+
+        }
+
+        @GET
+        public Set<Fruit> list(){
+            return fruits;
+        }
+
+        @POST
+        public Set<Fruit> add(Fruit fruit){
+            fruits.add(fruit);
+            return fruits;
+        }
+
+        @DELETE
+        public Set<Fruit> delete(Fruit fruit){
+            fruits.removeIf(
+                    existingFruit -> existingFruit.name.contentEquals(fruit.name)
+            );
+            return fruits;
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> test/java/org/acme/FruitResourceTest
+    import io.quarkus.test.junit.QuarkusTest;
+    import org.junit.jupiter.api.Test;
+
+    import javax.ws.rs.core.MediaType;
+
+    import static io.restassured.RestAssured.given;
+    import static org.hamcrest.CoreMatchers.is;
+    import static org.hamcrest.Matchers.containsInAnyOrder;
+    @QuarkusTest
+    public class FruitResourceTest {
+
+        @Test
+        public void testList(){
+            given()
+                    .when().get("/fruits")
+                    .then()
+                    .statusCode(200)
+                    .body("$.size()", is(2),
+                        "name",containsInAnyOrder("Apple","Pineapple"),
+                        "description", containsInAnyOrder("Winter fruit","Tropical fruit")
+                    );
+        }
+
+        @Test
+        public void testAdd(){
+            given()
+                    //for easy typing,
+                    //type it first on postman request body
+                    //then copy and paste it here
+                    .body("{\n" +
+                            "    \"name\":\"Pearl\",\n" +
+                            "    \"description\":\"Winter fruit\"\n" +
+                            "}")
+                    .header("Content-Type", MediaType.APPLICATION_JSON)
+                    .when()
+                    .post("/fruits")
+                    .then()
+                    .statusCode(200)
+                    .body("$.size()", is(3),
+                            "name",containsInAnyOrder("Apple","Pineapple","Pearl"),
+                            "description", containsInAnyOrder("Winter fruit","Tropical fruit","Winter fruit")
+                    );
+
+            given()
+                    .body("{\n" +
+                            "    \"name\":\"Pearl\",\n" +
+                            "    \"description\":\"Winter fruit\"\n" +
+                            "}")
+                    .header("Content-Type",MediaType.APPLICATION_JSON)
+                    .when()
+                    .delete("/fruits")
+                    .then()
+                    .statusCode(200)
+                    .body("$.size()", is(2),
+                            "name",containsInAnyOrder("Apple","Pineapple"),
+                            "description", containsInAnyOrder("Winter fruit","Tropical fruit")
+                    );
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> test/java/org/acme/OpenApiTest
+    import io.quarkus.test.junit.QuarkusTest;
+    import org.junit.jupiter.api.Test;
+
+    import static io.restassured.RestAssured.given;
+    import static org.hamcrest.CoreMatchers.containsString;
+
+    @QuarkusTest
+    public class OpenApiTest {
+        @Test
+        public void testOpenApi(){
+            given()
+                    .when().get("/q/openapi")
+                    .then()
+                    .statusCode(200)
+                    .body(containsString("openapi"));
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> test/java/org/acme/SwaggerUiTest
+    import io.quarkus.test.junit.QuarkusTest;
+    import org.junit.jupiter.api.Test;
+
+    import static io.restassured.RestAssured.given;
+    import static org.hamcrest.CoreMatchers.containsString;
+
+    @QuarkusTest
+    public class SwaggerUiTest {
+        // Note: Swagger UI is only available when Quarkus is started in dev or test mode
+        @Test
+        public void testSwaggerUi(){
+            given()
+                    .when().get("/q/swagger-ui")
+                    .then()
+                    .statusCode(200)
+                    .body(containsString("/openapi"));
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Postman
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+->GET localhost:8080/fruits SEND
+    response body:
+    [
+        {
+            "description": "Winter fruit",
+            "name": "Apple"
+        },
+        {
+            "description": "Tropical fruit",
+            "name": "Pineapple"
+        }
+    ]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+->POST localhost:8080/fruits SEND
+    request body:
+    {
+        "name":"lebron",
+        "description":"james"
+    }
+    response body:
+    [
+        {
+            "description": "Winter fruit",
+            "name": "Apple"
+        },
+        {
+            "description": "Tropical fruit",
+            "name": "Pineapple"
+        },
+        {
+            "description": "james",
+            "name": "lebron"
+        }
+    ]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+->DELETE localhost:8080/fruits SEND
+    request body:
+        {
+            "description": "Tropical fruit",
+            "name": "Pineapple"
+        }
+    response body:
+    [
+        {
+            "description": "Winter fruit",
+            "name": "Apple"
+        },
+        {
+            "description": "james",
+            "name": "lebron"
+        }
+    ]
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> OpenApi
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> GET localhost:8080/q/openapi SEND
+    response body:
+        ---
+        openapi: 3.0.3
+        info:
+            title: code-with-quarkus API
+            version: 1.0.0-SNAPSHOT
+        paths:
+            /fruits:
+                get:
+                    tags:
+                        - Fruit Resource
+                    responses:
+                        "200":
+                            description: OK
+                            content:
+                                application/json:
+                                    schema:
+                                        uniqueItems: true
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Fruit"
+                post:
+                    tags:
+                        - Fruit Resource
+                    requestBody:
+                        content:
+                            application/json:
+                                schema:
+                                    $ref: "#/components/schemas/Fruit"
+                    responses:
+                        "200":
+                            description: OK
+                            content:
+                                application/json:
+                                    schema:
+                                        uniqueItems: true
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Fruit"
+                delete:
+                    tags:
+                        - Fruit Resource
+                    requestBody:
+                        content:
+                            application/json:
+                                schema:
+                                    $ref: "#/components/schemas/Fruit"
+                    responses:
+                        "200":
+                            description: OK
+                            content:
+                                application/json:
+                                    schema:
+                                        uniqueItems: true
+                                        type: array
+                                        items:
+                                            $ref: "#/components/schemas/Fruit"
+        components:
+            schemas:
+                Fruit:
+                    type: object
+                    properties:
+                        name:
+                            type: string
+                        description:
+                            type: string
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> Swagger-UI
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-> open web browser then type http://localhost:8080/q/swagger-ui/
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------

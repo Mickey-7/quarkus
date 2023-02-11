@@ -1,0 +1,355 @@
+reference : https://www.knowledgefactory.net/2021/10/consume-rest-apis-in-quarkus.html?m=
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+->dependencies:
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest-client-jackson</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-rest-client</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.quarkus</groupId>
+      <artifactId>quarkus-resteasy</artifactId>
+    </dependency>
+-----------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/model/PostModel
+    public class PostModel {
+        private String userId;
+        private String id;
+        private String body;
+        private String title;
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public PostModel() {
+        }
+
+        public PostModel(String userId, String id, String body, String title) {
+            this.userId = userId;
+            this.id = id;
+            this.body = body;
+            this.title = title;
+        }
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public void setUserId(String userId) {
+            this.userId = userId;
+        }
+
+        public String getId() {
+            return id;
+        }
+
+        public void setId(String id) {
+            this.id = id;
+        }
+
+        public String getBody() {
+            return body;
+        }
+
+        public void setBody(String body) {
+            this.body = body;
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+->MP (MicroProfile)
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/service/
+    import org.acme.model.PostModel;
+    import org.eclipse.microprofile.rest.client.inject.RegisterRestClient;
+
+    import javax.ws.rs.GET;
+    import javax.ws.rs.Path;
+    import java.util.List;
+
+    @Path("/posts")
+    /*
+    @RegisterRestClient allows Quarkus to know
+    that this interface is meant to be available for
+    CDI injection as a REST Client
+    */
+    @RegisterRestClient
+    public interface PostServiceMicroProfile {
+        @GET
+        List<PostModel> fetchALlPosts();
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> application.properties
+    #The standard MicroProfile Rest Client properties notation:
+    org.acme.service.PostServiceMicroProfile/mp-rest/url = https://jsonplaceholder.typicode.com
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/controller/PostResourceMicroProfile
+    import org.acme.model.PostModel;
+    import org.acme.service.PostServiceMicroProfile;
+    import org.eclipse.microprofile.rest.client.inject.RestClient;
+
+    import javax.inject.Inject;
+    import javax.ws.rs.GET;
+    import javax.ws.rs.Path;
+    import java.util.List;
+
+    @Path("/api/v1/mprestclient")
+    public class PostResourceMicroProfile {
+        @Inject
+        @RestClient
+        PostServiceMicroProfile postServiceMicroProfile;
+
+        @GET
+        @Path("/posts")
+        public List<PostModel> fetchAllPosts(){
+            return postServiceMicroProfile.fetchALlPosts();
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+->HttpClient
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/service/PostServiceHttpClient
+    import com.fasterxml.jackson.databind.ObjectMapper;
+
+    import javax.inject.Singleton;
+    import java.io.IOException;
+    import java.net.URI;
+    import java.net.http.HttpClient;
+    import java.net.http.HttpRequest;
+    import java.net.http.HttpResponse;
+    import java.util.List;
+
+    @Singleton
+    public class PostServiceHttpClient {
+        private final HttpClient httpClient = HttpClient.
+                newBuilder().version(HttpClient.Version.HTTP_2).build();
+
+        public <T>List<T> fetchPosts(String url, Class<T> responseType) throws IOException, InterruptedException {
+            HttpRequest request = HttpRequest.newBuilder().GET()
+                    .uri(URI.create(url)).header("Accept",
+                            "application/json").build();
+
+            HttpResponse<String> response = httpClient
+                    .send(request,HttpResponse.BodyHandlers.ofString());
+
+            ObjectMapper objectMapper = new ObjectMapper();
+            return objectMapper.readValue(response.body(),
+                    objectMapper.getTypeFactory().
+                    constructCollectionType(List.class,responseType));
+
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/controller/PostResourceHttpClient
+    import org.acme.model.PostModel;
+    import org.acme.service.PostServiceHttpClient;
+
+    import javax.inject.Inject;
+    import javax.ws.rs.GET;
+    import javax.ws.rs.Path;
+    import java.io.IOException;
+    import java.util.List;
+
+    @Path("/api/v1/httpclient")
+    public class PostResourceHttpClient {
+        @Inject
+        PostServiceHttpClient postServiceHttpClient;
+
+        @GET
+        @Path("/posts")
+        public List<PostModel> fetchAllPosts() throws IOException, InterruptedException {
+            List<PostModel> postModels = postServiceHttpClient
+                    .fetchPosts("https://jsonplaceholder.typicode.com/posts",
+                            PostModel.class);
+            return postModels;
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+->JAX-RS
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> org/acme/controller/PostResourceJAXRS
+    import org.acme.model.PostModel;
+
+    import javax.ws.rs.GET;
+    import javax.ws.rs.Path;
+    import javax.ws.rs.client.Client;
+    import javax.ws.rs.client.ClientBuilder;
+    import javax.ws.rs.core.GenericType;
+    import java.util.List;
+
+    @Path("/api/v1/jaxrsclient")
+    public class PostResourceJAXRS {
+        private final Client client = ClientBuilder.newBuilder().build();
+        private final String url = "https://jsonplaceholder.typicode.com/posts";
+
+        @GET
+        @Path("/posts")
+        public List<PostModel> fetchAllPosts(){
+            List<PostModel> postModels = client.target(url)
+                    .request().get(new GenericType<>(){});
+            return postModels;
+        }
+    }
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-> Postman
+-----------------------------------------------------------------------------------------------------------------------------------------
+->JAX-RS
+    GET localhost:8080/api/v1/jaxrsclient/posts SEND
+-----------------------------------------------------------------------------------------------------------------------------------------
+->HttpClient
+    GET localhost:8080/api/v1/httpclient/posts SEND
+-----------------------------------------------------------------------------------------------------------------------------------------
+->MicroProfile (MP)
+    GET localhost:8080/api/v1/mprestclient/posts SEND
+-----------------------------------------------------------------------------------------------------------------------------------------
+-> response body is same for all:
+    [
+        {
+            "userId": "1",
+            "id": "1",
+            "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto",
+            "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit"
+        },
+        {
+            "userId": "1",
+            "id": "2",
+            "body": "est rerum tempore vitae\nsequi sint nihil reprehenderit dolor beatae ea dolores neque\nfugiat blanditiis voluptate porro vel nihil molestiae ut reiciendis\nqui aperiam non debitis possimus qui neque nisi nulla",
+            "title": "qui est esse"
+        },
+        {
+            "userId": "1",
+            "id": "3",
+            "body": "et iusto sed quo iure\nvoluptatem occaecati omnis eligendi aut ad\nvoluptatem doloribus vel accusantium quis pariatur\nmolestiae porro eius odio et labore et velit aut",
+            "title": "ea molestias quasi exercitationem repellat qui ipsa sit aut"
+        },
+        {
+            "userId": "1",
+            "id": "4",
+            "body": "ullam et saepe reiciendis voluptatem adipisci\nsit amet autem assumenda provident rerum culpa\nquis hic commodi nesciunt rem tenetur doloremque ipsam iure\nquis sunt voluptatem rerum illo velit",
+            "title": "eum et est occaecati"
+        },
+        {
+            "userId": "1",
+            "id": "5",
+            "body": "repudiandae veniam quaerat sunt sed\nalias aut fugiat sit autem sed est\nvoluptatem omnis possimus esse voluptatibus quis\nest aut tenetur dolor neque",
+            "title": "nesciunt quas odio"
+        },
+        {
+            "userId": "1",
+            "id": "6",
+            "body": "ut aspernatur corporis harum nihil quis provident sequi\nmollitia nobis aliquid molestiae\nperspiciatis et ea nemo ab reprehenderit accusantium quas\nvoluptate dolores velit et doloremque molestiae",
+            "title": "dolorem eum magni eos aperiam quia"
+        },
+        {
+            "userId": "1",
+            "id": "7",
+            "body": "dolore placeat quibusdam ea quo vitae\nmagni quis enim qui quis quo nemo aut saepe\nquidem repellat excepturi ut quia\nsunt ut sequi eos ea sed quas",
+            "title": "magnam facilis autem"
+        },
+        .......,
+        {
+            "userId": "10",
+            "id": "100",
+            "body": "cupiditate quo est a modi nesciunt soluta\nipsa voluptas error itaque dicta in\nautem qui minus magnam et distinctio eum\naccusamus ratione error aut",
+            "title": "at nam consequatur ea labore ea harum"
+        }
+    ]
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+->error encountered: "stack": "org.jboss.resteasy.spi.UnhandledException: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: Cannot construct instance of `org.acme.model.PostModel` (no Creators, like default constructor, exist): cannot deserialize from Object value (no delegate- or property-based Creator)
+    response body:
+    {
+        "details": "Error id 6f5d0c0c-b1be-4def-b7b8-8f4f1523b8cc-1, org.jboss.resteasy.spi.UnhandledException: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: Cannot construct instance of `org.acme.model.PostModel` (no Creators, like default constructor, exist): cannot deserialize from Object value (no delegate- or property-based Creator)",
+        "stack": "org.jboss.resteasy.spi.UnhandledException: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: Cannot construct instance of `org.acme.model.PostModel` (no Creators, like default constructor, exist): cannot deserialize from Object value (no delegate- or property-based Creator)\n at [Source: (String)\"[\n  {\n    \"userId\": 1,\n    \"id\": 1,\n    \"title\": \"sun}
+
+    run console output:
+    2023-02-10 09:01:15,191 ERROR [io.qua.ver.htt.run.QuarkusErrorHandler] (executor-thread-0) HTTP Request to /api/v1/httpclient/posts failed, error id: 6f5d0c0c-b1be-4def-b7b8-8f4f1523b8cc-1: org.jboss.resteasy.spi.UnhandledException: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: Cannot construct instance of `org.acme.model.PostModel` (no Creators, like default constructor, exist): cannot deserialize from Object value (no delegate- or property-based Creator)
+    at [Source: (String)"[
+    {
+        "userId": 1,
+        "id": 2,
+        "title": "qui est esse",
+        "body": "est rerum tempore vitae\nsequi sint nihil reprehenderit dolor beatae ea dolores neque\nfugiat blanditiis voluptate p"[truncated 27020 chars]; line: 3, column: 5] (through reference chain: java.util.ArrayList[0])
+        at org.jboss.resteasy.core.ExceptionHandler.handleApplicationException(ExceptionHandler.java:105)
+        at org.jboss.resteasy.core.ExceptionHandler.handleException(ExceptionHandler.java:359)
+        at org.jboss.resteasy.core.SynchronousDispatcher.writeException(SynchronousDispatcher.java:218)
+        at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:519)
+        at org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)
+        at org.jboss.resteasy.core.SynchronousDispatcher.lambda$preprocess$0(SynchronousDispatcher.java:161)
+        at org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)
+        at org.jboss.resteasy.core.SynchronousDispatcher.preprocess(SynchronousDispatcher.java:164)
+        at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:247)
+        at io.quarkus.resteasy.runtime.standalone.RequestDispatcher.service(RequestDispatcher.java:82)
+        at io.quarkus.resteasy.runtime.standalone.VertxRequestHandler.dispatch(VertxRequestHandler.java:147)
+        at io.quarkus.resteasy.runtime.standalone.VertxRequestHandler$1.run(VertxRequestHandler.java:93)
+        at io.quarkus.vertx.core.runtime.VertxCoreRecorder$14.runWith(VertxCoreRecorder.java:576)
+        at org.jboss.threads.EnhancedQueueExecutor$Task.run(EnhancedQueueExecutor.java:2449)
+        at org.jboss.threads.EnhancedQueueExecutor$ThreadBody.run(EnhancedQueueExecutor.java:1478)
+        at org.jboss.threads.DelegatingRunnable.run(DelegatingRunnable.java:29)
+        at org.jboss.threads.ThreadLocalResettingRunnable.run(ThreadLocalResettingRunnable.java:29)
+        at io.netty.util.concurrent.FastThreadLocalRunnable.run(FastThreadLocalRunnable.java:30)
+        at java.base/java.lang.Thread.run(Thread.java:829)
+    Caused by: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: Cannot construct instance of `org.acme.model.PostModel` (no Creators, like default constructor, exist): cannot deserialize from Object value (no delegate- or property-based Creator)
+    at [Source: (String)"[
+    {
+        "userId": 1,
+        "id": 1,
+        "title": "sunt aut facere repellat provident occaecati excepturi optio reprehenderit",
+        "body": "quia et suscipit\nsuscipit recusandae consequuntur expedita et cum\nreprehenderit molestiae ut ut quas totam\nnostrum rerum est autem sunt rem eveniet architecto"
+    },
+    {
+        "userId": 1,
+        "id": 2,
+        "title": "qui est esse",
+        "body": "est rerum tempore vitae\nsequi sint nihil reprehenderit dolor beatae ea dolores neque\nfugiat blanditiis voluptate p"[truncated 27020 chars]; line: 3, column: 5] (through reference chain: java.util.ArrayList[0])
+        at com.fasterxml.jackson.databind.exc.InvalidDefinitionException.from(InvalidDefinitionException.java:67)
+        at com.fasterxml.jackson.databind.DeserializationContext.reportBadDefinition(DeserializationContext.java:1909)
+        at com.fasterxml.jackson.databind.DatabindContext.reportBadDefinition(DatabindContext.java:408)
+        at com.fasterxml.jackson.databind.DeserializationContext.handleMissingInstantiator(DeserializationContext.java:1354)
+        at com.fasterxml.jackson.databind.deser.BeanDeserializerBase.deserializeFromObjectUsingNonDefault(BeanDeserializerBase.java:1420)
+        at com.fasterxml.jackson.databind.deser.BeanDeserializer.deserializeFromObject(BeanDeserializer.java:352)
+        at com.fasterxml.jackson.databind.deser.BeanDeserializer.deserialize(BeanDeserializer.java:185)
+        at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer._deserializeFromArray(CollectionDeserializer.java:359)
+        at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer.deserialize(CollectionDeserializer.java:244)
+        at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer.deserialize(CollectionDeserializer.java:28)
+        at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:323)
+        at com.fasterxml.jackson.databind.ObjectMapper._readMapAndClose(ObjectMapper.java:4730)
+        at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3677)
+        at org.acme.service.PostServiceHttpClient.fetchPosts(PostServiceHttpClient.java:27)
+        at org.acme.controller.PostResourceHttpClient.fetchAllPosts(PostResourceHttpClient.java:21)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+        at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+        at org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:170)
+        at org.jboss.resteasy.core.MethodInjectorImpl.invoke(MethodInjectorImpl.java:130)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.internalInvokeOnTarget(ResourceMethodInvoker.java:660)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTargetAfterFilter(ResourceMethodInvoker.java:524)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.lambda$invokeOnTarget$2(ResourceMethodInvoker.java:474)
+        at org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext.filter(PreMatchContainerRequestContext.java:364)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invokeOnTarget(ResourceMethodInvoker.java:476)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:434)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:408)
+        at org.jboss.resteasy.core.ResourceMethodInvoker.invoke(ResourceMethodInvoker.java:69)
+        at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:492)
+        ... 15 more
+    
+    solution:
+
+    create empty constructor on the PostModel class
+-----------------------------------------------------------------------------------------------------------------------------------------
