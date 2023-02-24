@@ -1,0 +1,78 @@
+reference : https://ld2016.scusa.lsu.edu/java/7-docs/technotes/guides/security/xmldsig/XMLDigitalSignature.html
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+Package Hierarchy :
+
+    The six packages listed below comprise the XML Digital Signature API:
+
+        javax.xml.crypto
+
+    The javax.xml.crypto package contains common classes that are used to perform XML cryptographic operations, 
+    such as generating an XML signature or encrypting XML data. 
+    Two notable classes in this package are the KeySelector class, 
+    which allows developers to supply implementations that locate and 
+    optionally validate keys using the information contained in a KeyInfo object, 
+    and the URIDereferencer class, which allows developers to create and specify their own URI dereferencing implementations.
+
+        javax.xml.crypto.dsig
+
+    The javax.xml.crypto.dsig package includes interfaces that represent the core elements 
+    defined in the W3C XML digital signature specification. Of primary significance is the XMLSignature class, 
+    which allows you to sign and validate an XML digital signature. 
+    Most of the XML signature structures or elements are represented by a corresponding interface 
+    (except for the KeyInfo structures, which are included in their own package and are discussed in the next paragraph). 
+    These interfaces include: SignedInfo, CanonicalizationMethod, SignatureMethod, Reference, Transform, DigestMethod, 
+    XMLObject, Manifest, SignatureProperty, and SignatureProperties. 
+    The XMLSignatureFactory class is an abstract factory that is used to create objects that implement these interfaces.
+
+
+        javax.xml.crypto.dsig.keyinfo
+
+    The javax.xml.crypto.dsig.keyinfo package contains interfaces that represent most of the KeyInfo structures 
+    defined in the W3C XML digital signature recommendation, including KeyInfo, KeyName, KeyValue, X509Data, 
+    X509IssuerSerial, RetrievalMethod, and PGPData. 
+    The KeyInfoFactory class is an abstract factory that is used to create objects that implement these interfaces.
+
+        javax.xml.crypto.dsig.spec
+
+    The javax.xml.crypto.dsig.spec package contains interfaces and classes representing input parameters for the digest, 
+    signature, transform, or canonicalization algorithms used in the processing of XML signatures.
+
+        javax.xml.crypto.dom
+        javax.xml.crypto.dsig.dom
+
+    Finally, the javax.xml.crypto.dom and javax.xml.crypto.dsig.dom packages contains DOM-specific classes 
+    for the javax.xml.crypto and javax.xml.crypto.dsig packages, respectively. 
+    Only developers and users who are creating or using a DOM-based XMLSignatureFactory or 
+    KeyInfoFactory implementation will need to make direct use of these packages.
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+reference : https://mkyong.com/java/java-digital-signatures-example/
+
+    
+error encountered : 
+Exception in thread "main" java.lang.IllegalArgumentException: Illegal base64 character 21
+	at java.base/java.util.Base64$Decoder.decode0(Base64.java:746)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:538)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:561)
+	at mkyong.AsymmetricCryptography.decryptText(AsymmetricCryptography.java:84)
+	at mkyong.AsymmetricCryptography.main(AsymmetricCryptography.java:38)
+
+solution : https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk15on/1.70
+download bouncycastle jar and add
+    ->File
+        ->Project Structure
+            ->Libraries
+                ->click + 
+                    ->select Java locate the jar file
+                        ->click Apply then use Base64 from it
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+reference : https://www.javacodegeeks.com/2013/10/xml-security-with-digital-signature-in-java.html#google_vignette
+
+    https://www.dropbox.com/s/0k1iukhy0in6n8h/xmldigitalsignature1.zip
+
+    https://docs.oracle.com/javase/9/security/java-xml-digital-signature-api-overview-and-tutorial.htm#JSSEC-GUID-E7E9239F-C973-4D05-AC3F-53F714C259DB
+
