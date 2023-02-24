@@ -72,7 +72,3 @@ download bouncycastle jar and add
 
 reference : https://www.javacodegeeks.com/2013/10/xml-security-with-digital-signature-in-java.html#google_vignette
 
-    https://www.dropbox.com/s/0k1iukhy0in6n8h/xmldigitalsignature1.zip
-
-    https://docs.oracle.com/javase/9/security/java-xml-digital-signature-api-overview-and-tutorial.htm#JSSEC-GUID-E7E9239F-C973-4D05-AC3F-53F714C259DB
-
