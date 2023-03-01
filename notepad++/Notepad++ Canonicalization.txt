@@ -1,0 +1,20 @@
+Enable Canonicalization on Notepad++
+
+
+->Open Notepad++ 
+->Click Plugins
+->Select Plugins Admin
+->Select XML Tools
+->Click Install
+->Select Yes
+
+
+reference : https://community.notepad-plus-plus.org/topic/16983/xml-tools
+
+
+
+Canonicalization can be done in Notepad++ in 3 steps:
+ > Plugins  > Xml Tool > Linerize
+ > Plugins  > Xml Tool > Pretty print (libXML)
+and optional:
+ > Edit > Line operations > sort lines

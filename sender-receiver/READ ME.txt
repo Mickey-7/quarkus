@@ -1,0 +1,213 @@
+-----------------------------------------------------------------------------------------------------------------------------------------
+pass data from application.properties then print the values
+
+    application.properties:
+        #pass data from application.properties then print the values
+        #string
+        myapp.message=Hello World!
+        #array
+        myapp.array=value1,value2,value3
+        #list
+        myapp.list=list1,list2,list3
+
+    SenderResource class:
+        @ApplicationScoped
+        public class SenderResource {
+            @ConfigProperty(name = "myapp.message")
+            String message;
+            @ConfigProperty(name = "myapp.array")
+            String[] array;
+            @ConfigProperty(name = "myapp.list")
+            List<String> list;
+            //onStart method is executed before start up
+            void onStart(@Observes StartupEvent event) {
+                System.out.println(message);
+                for(String arr : array){
+                    System.out.println(arr);
+                }
+                list.forEach(System.out::println);
+            }
+        }
+
+    run console output:
+
+        [INFO] Invoking org.apache.maven.plugins:maven-compiler-plugin:3.10.1:testCompile @ code-with-quarkus
+        [INFO] No sources to compile
+        Listening for transport dt_socket at address: 5006
+        Press [h] for more options>
+        Tests paused
+        Press [r] to resume testing, [h] for more options>
+        Press [r] to resume testing, [o] Toggle test output, [h] for more options>
+        Hello World!
+        value1
+        value2
+        value3
+        list1
+        list2
+        list3
+        __  ____  __  _____   ___  __ ____  ______ 
+        --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+        -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+        --\___\_\____/_/ |_/_/|_/_/|_|\____/___/ 
+
+    notice that the debug port is not set to 5006 - quarkus:dev -Ddebug=5006
+
+        Listening for transport dt_socket at address: 5006
+
+    because 5005 will be used for receiver application
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+creating post method request to be sent to receiver application
+    SenderResource class:
+
+        dependency:
+                <dependency>
+                    <groupId>io.quarkus</groupId>
+                    <artifactId>quarkus-rest-client</artifactId>
+                </dependency>
+
+        declare the url to be consume on application.properties:
+            post.url=http://localhost:8080/receiver/data
+
+        create post method:
+            @ConfigProperty(name = "post.url")
+            String postUrl;
+            public void sendMethod(){
+                // Create a JAX-RS client to make the POST request
+                Client client = ClientBuilder.newClient();
+                // Set up the request data
+                String data = "{\n" +
+                        "    \"data\":\"data\"\n" +
+                        "}";
+                // Make the POST request with header
+                Response response = client.target(postUrl)
+                        .request(MediaType.APPLICATION_JSON_TYPE)
+                        .header("X-IBM-Client-Id", "caadbccc-d92b-4929-a89c-c21bf0ca6ed8")
+                        .header("X-IBM-Client-Secret", "H1lE1sA7rI6wL4tJ6pF2mW8kE6oK5yK7aS5kI7jV3uY4yL5sB7")
+                        .post(Entity.entity(data, MediaType.APPLICATION_JSON_TYPE));
+                // Close the client
+                client.close();
+                System.out.println(postUrl);
+                System.out.println(response.getStatus());
+                System.out.println(response.readEntity(String.class));
+            }
+
+        call the post method on the onStart method:
+            //onStart method is executed before start up
+            void onStart(@Observes StartupEvent event) {
+                System.out.println(message);
+                for(String arr : array){
+                    System.out.println(arr);
+                }
+                list.forEach(System.out::println);
+                sendMethod();
+            }
+
+    run console output:
+
+        http://localhost:8080/receiver/data
+        200
+        {"annotations":[],"entity":{"tranDate":"22-08-2022","transactionId":"UB2252"},"mediaType":{"parameters":{},"subtype":"json","type":"application","wildcardSubtype":false,"wildcardType":false},"variant":{"mediaType":{"parameters":{},"subtype":"json","type":"application","wildcardSubtype":false,"wildcardType":false}}}
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+create receiver application to print the data from sender application
+    ReceiverModel class:
+
+        create class that will be used as response to sender application:
+            public class ReceiverModel {
+                private String transactionId;
+                private String tranDate;
+                public String getTransactionId() {
+                    return transactionId;
+                }
+                public void setTransactionId(String transactionId) {
+                    this.transactionId = transactionId;
+                }
+                public String getTranDate() {
+                    return tranDate;
+                }
+                public void setTranDate(String tranDate) {
+                    this.tranDate = tranDate;
+                }
+            }
+
+    ReceiverReource class:
+
+        dependency:
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-resteasy</artifactId>
+            </dependency>
+            <dependency>
+                <groupId>io.quarkus</groupId>
+                <artifactId>quarkus-resteasy-jsonb</artifactId>
+            </dependency>
+
+
+        create the receiver method:
+
+            @Path("/receiver")
+            public class ReceiverResource {
+                @POST
+                @Path("/data")
+                @Produces(MediaType.APPLICATION_JSON)
+                public Response getReceiverMethod(@Context HttpHeaders httpHeaders, String payload){
+                    JsonObject jsonObject = new JsonObject();
+                    //print header content
+                    httpHeaders.getRequestHeaders().forEach((key,value) -> {
+                        System.out.println(key+" : "+value);
+                        jsonObject.put(key,value);
+                    });
+                    System.out.println(jsonObject);
+                    //print payload
+                    System.out.println("Payload : "+payload);
+                    //create response
+                    ReceiverModel receiverModel = new ReceiverModel();
+                    receiverModel.setTransactionId("UB2252");
+                    receiverModel.setTranDate("22-08-2022");
+                    return Response.status(Response.Status.OK)
+                            .entity(Entity.json(receiverModel))
+                            .build();
+                }
+            }
+
+    run console output:
+
+        User-Agent : [Apache-HttpClient/4.5.14 (Java/15.0.1)]
+        X-IBM-Client-Secret : [H1lE1sA7rI6wL4tJ6pF2mW8kE6oK5yK7aS5kI7jV3uY4yL5sB7]
+        Accept : [application/json]
+        X-IBM-Client-Id : [caadbccc-d92b-4929-a89c-c21bf0ca6ed8]
+        Host : [localhost:8080]
+        Content-Type : [application/json]
+        Connection : [Keep-Alive]
+        Content-Length : [21]
+        {"User-Agent":["Apache-HttpClient/4.5.14 (Java/15.0.1)"],"X-IBM-Client-Secret":["H1lE1sA7rI6wL4tJ6pF2mW8kE6oK5yK7aS5kI7jV3uY4yL5sB7"],"Accept":["application/json"],"X-IBM-Client-Id":["caadbccc-d92b-4929-a89c-c21bf0ca6ed8"],"Host":["localhost:8080"],"Content-Type":["application/json"],"Connection":["Keep-Alive"],"Content-Length":["21"]}
+        Payload : {
+            "data":"data"
+        }
+-----------------------------------------------------------------------------------------------------------------------------------------
+
+-----------------------------------------------------------------------------------------------------------------------------------------
+encountered error:
+    2023-03-01 10:57:51,638 ERROR [org.jbo.res.res.i18n] (executor-thread-0) RESTEASY002005: Failed executing POST /receiver/data: org.jboss.resteasy.core.NoMessageBodyWriterFoundFailure: Could not find MessageBodyWriter for response object of type: org.acme.model.ReceiverModel of media type: application/json
+	at org.jboss.resteasy.core.ServerResponseWriter.lambda$writeNomapResponse$3(ServerResponseWriter.java:125)
+	at org.jboss.resteasy.core.interception.jaxrs.ContainerResponseContextImpl.filter(ContainerResponseContextImpl.java:410)
+	at org.jboss.resteasy.core.ServerResponseWriter.executeFilters(ServerResponseWriter.java:252)
+	at org.jboss.resteasy.core.ServerResponseWriter.writeNomapResponse(ServerResponseWriter.java:101)
+	at org.jboss.resteasy.core.ServerResponseWriter.writeNomapResponse(ServerResponseWriter.java:74)
+	at org.jboss.resteasy.core.SynchronousDispatcher.writeResponse(SynchronousDispatcher.java:594)
+	at org.jboss.resteasy.core.SynchronousDispatcher.invoke(SynchronousDispatcher.java:524)
+	at org.jboss.resteasy.core.SynchronousDispatcher.lambda$invoke$4(SynchronousDispatcher.java:261)
+
+    solution: 
+
+    add dependency
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-resteasy-jsonb</artifactId>
+        </dependency>
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------

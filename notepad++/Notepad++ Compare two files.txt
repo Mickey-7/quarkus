@@ -1,0 +1,11 @@
+->Open Notepad++
+->Click Plugin
+->Select Plugins Admin...
+->Search Compare
+->Click Install
+->Notepad++ will restart
+
+->Open the two files to be compared
+->Click Plugins
+->Compare
+->Compare NavBar will display differences
